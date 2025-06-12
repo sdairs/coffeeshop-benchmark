@@ -17,6 +17,7 @@ spark = (
     .config("spark.sql.catalog.glue_catalog.catalog-impl", "org.apache.iceberg.aws.glue.GlueCatalog")
     .config("spark.sql.catalog.glue_catalog.io-impl", "org.apache.iceberg.aws.s3.S3FileIO")
     .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
+    .config("spark.sql.shuffle.partitions", "4000") 
     .getOrCreate()
 )
 
@@ -24,10 +25,10 @@ spark = (
 output_database = "coffeeshop"
 dim_locations_table_name = "dim_locations"
 dim_products_table_name = "dim_products"
-fact_table_name    = "fact_sales_100k"
+fact_table_name    = "fact_sales_5b"
 from_date_str      = "2023-01-01"
 to_date_str        = "2024-12-31"
-total_order_count  = 5_000_000
+total_order_count  = 5_000_000_000
 
 # -------------------- Hardcoded Parameters (from original script) --------------------
 # Relative growth weights per “YYYY-MM”
