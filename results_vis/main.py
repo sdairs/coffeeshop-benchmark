@@ -357,7 +357,7 @@ def main():
     df_master['query_num'] = df_master['query_num'].astype(int)
     df_master['config_compute'] = df_master['db_config'] + "_" + df_master['compute_size']
 
-    queries_to_exclude = [10, 15, 16] # Temporarily excluding Query 15 as well
+    queries_to_exclude = [10, 16] # Temporarily excluding Query 15 as well
     print(f"\nExcluding queries: {queries_to_exclude} from the results.")
     df_master = df_master[~df_master['query_num'].isin(queries_to_exclude)]
 
