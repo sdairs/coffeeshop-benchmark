@@ -1,0 +1,7 @@
+config_compute,total_seconds
+databricks_DBX_M,82.39
+snowflake_SF_M_Gen2,87.2
+snowflake_SF_S_Gen1,87.2
+databricks_DBX_S,116.03
+snowflake_SF_M_Gen1,129.3
+snowflake_SF_S_Gen2,159.2

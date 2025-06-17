@@ -103,7 +103,7 @@ def generate_visualizations(df_to_plot, metric_column, y_label, title_suffix, pl
         ax.yaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f s'))
         table_data_str = pivot_table.fillna('N/A').round(2).astype(str)
 
-    plt.subplots_adjust(left=0.05, bottom=0.25, right=0.8, top=0.9)
+    plt.subplots_adjust(left=0.05, bottom=0.30, right=0.8, top=0.9) # Increased bottom margin
 
     cell_text_values = table_data_str.values.tolist()
     col_labels = [f"Q{col}" for col in table_data_str.columns]
@@ -148,7 +148,7 @@ def generate_visualizations(df_to_plot, metric_column, y_label, title_suffix, pl
     the_table = plt.table(cellText=cell_text_values, 
                           rowLabels=row_labels, colLabels=col_labels,
                           cellColours=cell_colors_list, loc='bottom',
-                          bbox=[0, -0.35 - 0.05 * len(row_labels), 1, 0.3 + 0.05 * len(row_labels)])
+                          bbox=[0, -0.40 - 0.05 * len(row_labels), 1, 0.3 + 0.05 * len(row_labels)]) # Made y-position more negative
     the_table.auto_set_font_size(False)
     the_table.set_fontsize(8)
     the_table.scale(1, 1.2)
@@ -159,6 +159,126 @@ def generate_visualizations(df_to_plot, metric_column, y_label, title_suffix, pl
         print(f"Saved plot ({metric_column}) to {plot_filename}")
     except Exception as e:
         print(f"Error saving plot {plot_filename}: {e}")
+    plt.close(fig)
+
+
+def generate_total_metric_visualizations(df_to_plot, metric_column, y_label, title_suffix, plot_filename_base, table_filename_base, dataset_size, output_dir):
+    """Generates and saves a plot and a CSV table for the total sum of a given metric, grouped by configuration."""
+    print(f"--- Generating TOTAL visualization for metric: {metric_column}, dataset: {dataset_size} ---")
+
+    # Calculate total metric per config_compute, ensure to sum only valid numbers
+    # Using min_count=1 so that if all values for a group are NaN, the sum is NaN, not 0.
+    grouped_sum = df_to_plot.groupby('config_compute')[metric_column].sum(min_count=1)
+    grouped_sum.dropna(inplace=True) # Drop NaNs from the sum results first
+
+    if grouped_sum.empty:
+        print(f"Total metrics for '{metric_column}', dataset '{dataset_size}' are empty after dropping NaNs. Skipping plot.")
+        return
+
+    # For the plot (smallest bar at the top because barh plots first item in series at bottom of y-axis)
+    series_for_plot = grouped_sum.sort_values(ascending=False)
+
+    # For the table and CSV (smallest value at the top)
+    series_for_table_csv = grouped_sum.sort_values(ascending=True)
+
+    # Convert Series to DataFrame for table saving (using ascending order)
+    total_metrics_df_for_csv = series_for_table_csv.reset_index()
+    total_metrics_df_for_csv.columns = ['config_compute', f'total_{metric_column}']
+
+    table_filename_csv = os.path.join(output_dir, f"{table_filename_base}_{dataset_size}.csv")
+    try:
+        total_metrics_df_for_csv.to_csv(table_filename_csv, index=False)
+        print(f"Saved total metrics table ({metric_column}) to {table_filename_csv}")
+    except Exception as e:
+        print(f"Error saving total metrics table {table_filename_csv}: {e}")
+
+    num_configs = len(series_for_plot.index) # Use series_for_plot for plot dimensions
+    # Adjust figsize for horizontal bars: height might depend on num_configs, width can be more fixed or adapt to label length
+    fig, ax = plt.subplots(figsize=(12, max(6, num_configs * 0.5))) # Width, Height
+
+    ax.barh(series_for_plot.index, series_for_plot.values, color='teal')
+
+    ax.set_ylabel("DB Config & Compute Size") # Swapped
+    ax.set_xlabel(y_label) # Swapped
+    ax.set_title(f"Benchmark {title_suffix} for Dataset: {dataset_size}")
+    # plt.xticks is not needed here for rotation as y-labels in barh are typically horizontal
+    # Ensure y-labels (config names) are fully visible if they are long
+    plt.yticks(fontsize=8) # Adjust fontsize if needed
+    
+    # Define colors for table (consistent with other plot)
+    color_map_definition = [
+        (0.0, mcolors.to_rgba('lightgreen')), (0.33, mcolors.to_rgba('yellow')),
+        (0.66, mcolors.to_rgba('orange')), (1.0, mcolors.to_rgba('darkred'))
+    ]
+    custom_cmap = mcolors.LinearSegmentedColormap.from_list("custom_gradient", color_map_definition)
+    nan_color = mcolors.to_rgba('lightgrey')
+    default_cell_color = mcolors.to_rgba('white')
+
+    # Table display uses series_for_table_csv (ascending order)
+    table_values_for_display = series_for_table_csv.copy()
+    if metric_column == 'cost':
+        ax.xaxis.set_major_formatter(mticker.FormatStrFormatter('$%.4f')) # Changed to xaxis
+        table_values_for_display = table_values_for_display.round(4)
+    else: # seconds
+        ax.xaxis.set_major_formatter(mticker.FormatStrFormatter('%.2f s')) # Changed to xaxis
+        table_values_for_display = table_values_for_display.round(2)
+    
+    cell_text_str_list = table_values_for_display.fillna('N/A').astype(str).tolist()
+    cell_text_values = [[val] for val in cell_text_str_list] # Define cell_text_values for the table
+    row_labels = series_for_table_csv.index.tolist() # Use ascending order for table row labels
+    col_labels = [f"Total {metric_column.capitalize()}"]
+
+    cell_colors_list = [[default_cell_color] for _ in range(len(row_labels))]
+    valid_data_for_color = table_values_for_display.dropna()
+
+    if not valid_data_for_color.empty:
+        min_val_color = valid_data_for_color.min()
+        max_val_color = valid_data_for_color.max()
+        for i, value in enumerate(table_values_for_display):
+            if pd.isna(value):
+                cell_colors_list[i][0] = nan_color
+            else:
+                if min_val_color == max_val_color:
+                    cell_colors_list[i][0] = custom_cmap(0.0)
+                else:
+                    norm_value = (value - min_val_color) / (max_val_color - min_val_color)
+                    cell_colors_list[i][0] = custom_cmap(norm_value)
+    else:
+        for i in range(len(row_labels)):
+            cell_colors_list[i][0] = nan_color
+
+    # Adjust layout for table and potentially long y-axis labels
+    plt.subplots_adjust(left=0.3, bottom=0.35) # Increased bottom margin for plot, to make space for table
+
+    table_height_inches = max(1.5, len(row_labels) * 0.25 + 0.5)
+    current_fig_width, current_fig_height = fig.get_size_inches()
+    # fig.set_size_inches(current_fig_width, current_fig_height + table_height_inches) # This can distort existing plot, use bbox carefully
+
+    # Position table using bbox relative to axes. The axes itself might need adjustment.
+    # The bbox coordinates are (left, bottom, width, height) relative to the axes.
+    # Negative bottom places it below the axes. Height of bbox needs to be dynamic.
+    dynamic_bbox_bottom = -0.35 - (0.03 * len(row_labels)) # Made more negative to push table further down
+    dynamic_bbox_height = 0.2 + (0.03 * len(row_labels))  # Heuristic for height
+
+    the_table = plt.table(cellText=cell_text_values,
+                          rowLabels=row_labels,
+                          colLabels=col_labels,
+                          cellColours=cell_colors_list,
+                          loc='bottom',
+                          bbox=[0, dynamic_bbox_bottom, 1, dynamic_bbox_height] # Full width of axes, below it
+                         )
+    the_table.auto_set_font_size(False)
+    the_table.set_fontsize(8)
+    the_table.scale(1, 1.2)
+
+    plt.tight_layout(rect=[0, 0.05, 1, 0.95]) # Adjust rect to prevent table overlap if bbox_inches='tight' is not enough
+
+    plot_filename = os.path.join(output_dir, f"{plot_filename_base}_{dataset_size}.png")
+    try:
+        plt.savefig(plot_filename, dpi=300, bbox_inches='tight')
+        print(f"Saved total metrics plot ({metric_column}) to {plot_filename}")
+    except Exception as e:
+        print(f"Error saving total metrics plot {plot_filename}: {e}")
     plt.close(fig)
 
 def main():
@@ -282,6 +402,34 @@ def main():
             )
         else:
             print(f"No cost data available for dataset {dataset_size} to generate cost plot.")
+
+        # Generate total time visualization
+        generate_total_metric_visualizations(
+            df_to_plot=df_dataset_current,
+            metric_column='seconds',
+            y_label='Total Seconds (Sum of All Queries)',
+            title_suffix='Total Performance (Time)',
+            plot_filename_base='plot_total_time',
+            table_filename_base='table_total_time',
+            dataset_size=dataset_size,
+            output_dir=OUTPUT_DIR
+        )
+
+        # Generate total cost visualization
+        # df_cost_dataset is already filtered for notna costs from the per-query section
+        if not df_cost_dataset.empty:
+            generate_total_metric_visualizations(
+                df_to_plot=df_cost_dataset, # Use the same df_cost_dataset
+                metric_column='cost',
+                y_label='Total Cost ($) (Sum of All Queries)',
+                title_suffix='Total Query Cost',
+                plot_filename_base='plot_total_cost',
+                table_filename_base='table_total_cost',
+                dataset_size=dataset_size,
+                output_dir=OUTPUT_DIR
+            )
+        else:
+            print(f"No cost data available for dataset {dataset_size} to generate total cost plot.")
 
 
 if __name__ == "__main__":
