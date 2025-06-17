@@ -1,7 +1,4 @@
---Query 00
-SELECT '1'
-
---Query 01
+-- 1
 SELECT
     f.order_date,
     l.city,
@@ -11,7 +8,7 @@ SELECT
         ORDER BY f.order_date
         ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
     ) AS rolling_7day_avg
-FROM coffeeshop_native.fact_sales_500m f
+FROM coffeeshop_native.fact_sales_5b f
 JOIN coffeeshop_native.dim_locations l
     ON f.location_id = l.location_id
 GROUP BY
@@ -21,15 +18,13 @@ ORDER BY
     l.city,
     f.order_date;
 
-
-
---Query 02
+-- 2
 WITH monthly_sales AS (
     SELECT
         DATE_TRUNC('month', f.order_date) AS sales_month,
         f.product_name,
         SUM(f.sales_amount) AS total_sales
-    FROM coffeeshop_native.fact_sales_500m f
+    FROM coffeeshop_native.fact_sales_5b f
     GROUP BY
         DATE_TRUNC('month', f.order_date),
         f.product_name
@@ -42,16 +37,14 @@ SELECT
 FROM monthly_sales
 ORDER BY sales_month, sales_rank;
 
-
-
---Query 03
+-- 3
 WITH season_discount AS (
     SELECT
         l.city,
         l.state,
         f.season,
         AVG(f.discount_percentage) AS avg_discount
-    FROM coffeeshop_native.fact_sales_500m f
+    FROM coffeeshop_native.fact_sales_5b f
     JOIN coffeeshop_native.dim_locations l
         ON f.location_id = l.location_id
     GROUP BY
@@ -77,9 +70,7 @@ FROM (
 WHERE discount_rank <= 3
 ORDER BY season, discount_rank;
 
-
-
---Query 04
+-- 4
 SELECT
     f.order_date,
     f.product_name,
@@ -88,7 +79,7 @@ SELECT
     SUM(f.quantity) AS total_quantity_sold,
     SUM(f.sales_amount) AS total_sales_amount,
     (p.standard_price - p.standard_cost) * SUM(f.quantity) AS theoretical_margin
-FROM coffeeshop_native.fact_sales_500m f
+FROM coffeeshop_native.fact_sales_5b f
 JOIN coffeeshop_native.dim_products p
     ON f.product_name = p.name
     AND f.order_date BETWEEN p.from_date AND p.to_date
@@ -101,15 +92,13 @@ ORDER BY
     f.order_date,
     f.product_name;
 
-
-
---Query 05
+-- 5
 WITH daily_city_qty AS (
     SELECT
         f.order_date,
         l.city,
         SUM(f.quantity) AS daily_qty
-    FROM coffeeshop_native.fact_sales_500m f
+    FROM coffeeshop_native.fact_sales_5b f
     JOIN coffeeshop_native.dim_locations l
         ON f.location_id = l.location_id
     GROUP BY
@@ -128,16 +117,14 @@ SELECT
 FROM daily_city_qty
 ORDER BY city, order_date;
 
-
--- TODO: doesnt work
---Query 06
-CREATE OR REPLACE TABLE query06 AS
+-- 6
+CREATE OR REPLACE TABLE query06 ORDER BY sales_month AS
 WITH monthly_cat AS (
     SELECT
         DATE_TRUNC('month', f.order_date) AS sales_month,
         p.category,
         SUM(f.sales_amount) AS monthly_revenue
-    FROM coffeeshop_native.fact_sales_500m f
+    FROM coffeeshop_native.fact_sales_5b f
     JOIN coffeeshop_native.dim_products p
         ON f.product_name = p.name
         AND f.order_date BETWEEN p.from_date AND p.to_date
@@ -146,14 +133,12 @@ WITH monthly_cat AS (
         p.category
 )
 SELECT
-    sales_month,
+    coalesce(sales_month, DATE('1970-01-01')) AS sales_month,
     category,
     monthly_revenue
 FROM monthly_cat;
 
-
-
---Query 07
+-- 7
 WITH yearly_sales AS (
     SELECT
         l.location_id,
@@ -161,7 +146,7 @@ WITH yearly_sales AS (
         l.state,
         YEAR(f.order_date) AS sales_year,
         SUM(f.sales_amount) AS total_sales_year
-    FROM coffeeshop_native.fact_sales_500m f
+    FROM coffeeshop_native.fact_sales_5b f
     JOIN coffeeshop_native.dim_locations l
         ON f.location_id = l.location_id
     GROUP BY
@@ -185,16 +170,14 @@ ORDER BY
     city,
     state;
 
-
-
---Query 08
+-- 8
 WITH city_quarter_subcat AS (
     SELECT
         l.city,
         DATE_TRUNC('quarter', f.order_date) AS sales_quarter,
         p.subcategory,
         SUM(f.sales_amount) AS total_sales
-    FROM coffeeshop_native.fact_sales_500m f
+    FROM coffeeshop_native.fact_sales_5b f
     JOIN coffeeshop_native.dim_locations l
         ON f.location_id = l.location_id
     JOIN coffeeshop_native.dim_products p
@@ -214,15 +197,13 @@ SELECT
 FROM city_quarter_subcat
 ORDER BY city, sales_quarter, subcat_rank;
 
-
-
---Query 09
+-- 9
 WITH daily_discount AS (
     SELECT
         l.city,
         f.order_date,
         AVG(f.discount_percentage) AS avg_discount
-    FROM coffeeshop_native.fact_sales_500m f
+    FROM coffeeshop_native.fact_sales_5b f
     JOIN coffeeshop_native.dim_locations l
         ON f.location_id = l.location_id
     GROUP BY
@@ -241,25 +222,24 @@ SELECT
 FROM daily_discount
 ORDER BY city, order_date;
 
-
--- TODO: doesnt work
---Query 10
-CREATE OR REPLACE TABLE query10 AS
+-- 10
+CREATE OR REPLACE TABLE query10 ORDER BY (city, order_date) AS
 WITH daily_orders AS (
     SELECT
         f.order_date,
         l.city,
         COUNT(DISTINCT f.order_id) AS daily_distinct_orders
-    FROM coffeeshop_native.fact_sales_500m f
+    FROM coffeeshop_native.fact_sales_5b f
     JOIN coffeeshop_native.dim_locations l
         ON f.location_id = l.location_id
     GROUP BY
-        f.order_date,
-        l.city
+        l.city,
+        f.order_date
+        
 )
 SELECT
-    order_date,
-    city,
+    coalesce(order_date, DATE('1970-01-01')) AS order_date,
+    coalesce(city, '') AS city,
     daily_distinct_orders,
     SUM(daily_distinct_orders) OVER (
         PARTITION BY city
@@ -269,16 +249,14 @@ SELECT
 FROM daily_orders
 ORDER BY city, order_date;
 
-
-
---Query 11
+-- 11
 WITH city_quarter_subcat AS (
     SELECT
         l.city,
         DATE_TRUNC('quarter', f.order_date) AS sales_quarter,
         p.subcategory,
         SUM(f.sales_amount) AS total_sales
-    FROM coffeeshop_native.fact_sales_500m f
+    FROM coffeeshop_native.fact_sales_5b f
     JOIN coffeeshop_native.dim_locations l
         ON f.location_id = l.location_id
     JOIN coffeeshop_native.dim_products p
@@ -299,16 +277,14 @@ SELECT
 FROM city_quarter_subcat
 ORDER BY city, sales_quarter, subcat_rank;
 
-
-
---Query 12
+-- 12
 WITH city_quarter_subcat AS (
     SELECT
         l.city,
         DATE_TRUNC('quarter', f.order_date) AS sales_quarter,
         p.subcategory,
         SUM(f.sales_amount) AS total_sales
-    FROM coffeeshop_native.fact_sales_500m f
+    FROM coffeeshop_native.fact_sales_5b f
     JOIN coffeeshop_native.dim_locations l
         ON f.location_id = l.location_id
     JOIN coffeeshop_native.dim_products p
@@ -333,16 +309,14 @@ SELECT
 FROM city_quarter_subcat
 ORDER BY city, sales_quarter, subcat_rank;
 
-
-
---Query 13
+-- 13
 WITH city_quarter_subcat AS (
     SELECT
         l.city,
         DATE_TRUNC('quarter', f.order_date) AS sales_quarter,
         p.subcategory,
         SUM(f.sales_amount) AS total_sales
-    FROM coffeeshop_native.fact_sales_500m f
+    FROM coffeeshop_native.fact_sales_5b f
     JOIN coffeeshop_native.dim_locations l
         ON f.location_id = l.location_id
     JOIN coffeeshop_native.dim_products p
@@ -367,16 +341,14 @@ SELECT
 FROM city_quarter_subcat
 ORDER BY city, sales_quarter, subcat_rank;
 
-
-
---Query 14
+-- 14
 WITH city_quarter_subcat AS (
     SELECT
         l.city,
         DATE_TRUNC('quarter', f.order_date) AS sales_quarter,
         p.subcategory,
         SUM(f.sales_amount) AS total_sales
-    FROM coffeeshop_native.fact_sales_500m f
+    FROM coffeeshop_native.fact_sales_5b f
     JOIN coffeeshop_native.dim_locations l
         ON f.location_id = l.location_id
     JOIN coffeeshop_native.dim_products p
@@ -400,9 +372,7 @@ SELECT
 FROM city_quarter_subcat
 ORDER BY city, sales_quarter, subcat_rank;
 
-
--- TODO: doesnt work
---Query 15
+-- 15
 CREATE OR REPLACE TABLE query15 AS
 WITH base_data AS (
     SELECT
@@ -413,7 +383,7 @@ WITH base_data AS (
         SUM(f.sales_amount) AS total_sales,
         SUM(f.sales_amount * (f.discount_percentage / 100.0)) AS total_discount,
         SUM(f.quantity * p.standard_cost) AS total_cogs
-    FROM coffeeshop_native.fact_sales_500m f
+    FROM coffeeshop_native.fact_sales_5b f
     JOIN coffeeshop_native.dim_products p
         ON f.product_name = p.name
         AND f.order_date BETWEEN p.from_date AND p.to_date
@@ -450,7 +420,7 @@ SELECT
     yoy_profit_pct
 FROM with_yoy;
 
---Query 16
+-- 16
 WITH seasonal_data AS (
     SELECT
         l.state,
@@ -459,7 +429,7 @@ WITH seasonal_data AS (
         SUM(f.sales_amount) AS total_sales,
         SUM(f.quantity) AS total_units,
         COUNT(DISTINCT f.order_id) AS order_count
-    FROM coffeeshop_native.fact_sales_500m f
+    FROM coffeeshop_native.fact_sales_5b f
     JOIN coffeeshop_native.dim_products p
         ON f.product_name = p.name
         AND DATE(f.order_date) BETWEEN DATE(p.from_date) AND DATE(p.to_date)
@@ -479,7 +449,7 @@ FROM ranked
 WHERE category_rank <= 3
 ORDER BY state, season, category_rank;
 
---Query 17
+-- 17
 WITH raw_agg AS (
     SELECT
         l.state,
@@ -488,7 +458,7 @@ WITH raw_agg AS (
         SUM(f.sales_amount)       AS total_sales,
         SUM(f.quantity)           AS total_units,
         COUNT(DISTINCT f.order_id) AS order_count
-    FROM coffeeshop_native.fact_sales_500m AS f
+    FROM coffeeshop_native.fact_sales_5b AS f
     JOIN coffeeshop_native.dim_products AS p
       ON f.product_id = p.product_id
      AND DATE(f.order_date) BETWEEN DATE(p.from_date) AND DATE(p.to_date)

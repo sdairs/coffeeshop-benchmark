@@ -16,6 +16,10 @@ Each database tested has its own directory, with the following structure:
 
 If testing the same database with different storage formats (e.g. ClickHouse with MergeTree vs ClickHouse with Iceberg), add them as different top level directories (e.g. `clickhouse` and `clickhouse_iceberg`).
 
+## Note on Snowflake & Databricks results
+
+These are the results from the original benchmark posted to LinkedIn by the original author (see [credits](#credits)). They have been extracted from the images and put into CSVs so we can replot them. See the original post for methodology on those results. Any differences between the original results and the results in this repository are human error when extracting (if you see something, please let me know so I can fix it).
+
 ## Contributions
 
 If you'd like to add another database, please submit a PR that adds a new directory for the database with the updated queries and results.

@@ -78,6 +78,15 @@ def main():
     # Create a combined identifier for plotting
     df_master['config_compute'] = df_master['db_config'] + "_" + df_master['compute_size']
 
+    # Exclude specific queries (10 and 16)
+    queries_to_exclude = [10, 16]
+    print(f"\nExcluding queries: {queries_to_exclude} from the results.")
+    df_master = df_master[~df_master['query_num'].isin(queries_to_exclude)]
+
+    if df_master.empty:
+        print("No data remaining after excluding queries. Exiting.")
+        return
+
     dataset_sizes = df_master['dataset'].unique()
 
     for dataset_size in dataset_sizes:

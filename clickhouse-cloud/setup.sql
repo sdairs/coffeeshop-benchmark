@@ -1,6 +1,6 @@
-CREATE DATABASE coffeeshop_native;
+create database if not exists coffeeshop_native;
 
-CREATE TABLE coffeeshop_native.fact_sales_500m
+CREATE TABLE IF NOT EXISTS coffeeshop_native.fact_sales_500m
 ENGINE = MergeTree()
 ORDER BY (order_date, product_name, location_id)
 AS
@@ -18,10 +18,9 @@ SELECT
     COALESCE(sales_amount, 0.0) AS sales_amount,
     COALESCE(discount_percentage, 0) AS discount_percentage,
     COALESCE(product_id, '') AS product_id
-FROM icebergS3('s3://clickhouse-coffeeshop-benchmark/coffeeshop/fact_sales_500m', 'aws_access_key_id', 'aws_secret_access_key');
--- FROM glue.`coffeeshop.fact_sales_500m`;
+FROM icebergS3('s3://clickhouse-datalake-demo/coffeeshop/fact_sales_500m/', '', '');
 
-CREATE TABLE coffeeshop_native.dim_locations
+CREATE TABLE IF NOT EXISTS coffeeshop_native.dim_locations
 ENGINE = MergeTree()
 ORDER BY (record_id)
 AS
@@ -32,10 +31,9 @@ SELECT
     COALESCE(state, '') AS state,
     COALESCE(country, '') AS country,
     COALESCE(region, '') AS region
-FROM icebergS3('s3://clickhouse-coffeeshop-benchmark/coffeeshop/dim_locations', 'aws_access_key_id', 'aws_secret_access_key');
--- FROM glue.`coffeeshop.dim_locations`;
+FROM icebergS3('s3://clickhouse-datalake-demo/coffeeshop/dim_locations/', '', '');
 
-CREATE TABLE coffeeshop_native.dim_products
+CREATE TABLE IF NOT EXISTS coffeeshop_native.dim_products
 ENGINE = MergeTree()
 ORDER BY (record_id)
 AS
@@ -49,5 +47,4 @@ SELECT
     COALESCE(standard_price, 0.0) AS standard_price,
     COALESCE(from_date, toDate('1970-01-01')) AS from_date,
     COALESCE(to_date, toDate('9999-12-31')) AS to_date
-FROM icebergS3('s3://clickhouse-coffeeshop-benchmark/coffeeshop/dim_products', 'aws_access_key_id', 'aws_secret_access_key');
--- FROM glue.`coffeeshop.dim_products`;
+FROM icebergS3('s3://clickhouse-datalake-demo/coffeeshop/dim_products/', '', '');
