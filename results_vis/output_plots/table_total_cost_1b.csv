@@ -1,4 +1,4 @@
 config_compute,total_cost
-databricks_DBX_S,0.153
-snowflake_SF_S_Gen2,0.197
-snowflake_SF_S_Gen1,0.21
+databricks_DBX_S,0.13
+snowflake_SF_S_Gen2,0.165
+snowflake_SF_S_Gen1,0.177
