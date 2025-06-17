@@ -3,6 +3,7 @@ import glob
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+import matplotlib.colors as mcolors # For color mapping
 import numpy as np # For handling potential NaNs if a query is missing for a config
 
 RESULTS_DIRS = [
@@ -161,16 +162,56 @@ def main():
         col_labels = [f"Q{col}" for col in table_data_str.columns]
         row_labels = table_data_str.index
 
+        # --- Add color grading to table cells ---
+        # Define colors for the gradient: Green (best) -> Yellow -> Orange -> Red (worst)
+        color_map_definition = [
+            (0.0, mcolors.to_rgba('lightgreen')),  # Best value
+            (0.33, mcolors.to_rgba('yellow')),
+            (0.66, mcolors.to_rgba('orange')),
+            (1.0, mcolors.to_rgba('darkred'))    # Worst value
+        ]
+        custom_cmap = mcolors.LinearSegmentedColormap.from_list("custom_gradient", color_map_definition)
+        nan_color = mcolors.to_rgba('lightgrey')
+        default_cell_color = mcolors.to_rgba('white')
+
+        num_table_rows = len(pivot_table.index)
+        num_table_cols = len(pivot_table.columns)
+        cell_colors_list = [[default_cell_color for _ in range(num_table_cols)] for _ in range(num_table_rows)]
+
+        for col_idx, query_col_name in enumerate(pivot_table.columns):
+            column_data = pivot_table[query_col_name] # This is a pandas Series of numeric data
+            valid_data = column_data.dropna()
+
+            if valid_data.empty:
+                for row_idx in range(num_table_rows):
+                    cell_colors_list[row_idx][col_idx] = nan_color
+                continue
+
+            min_val = valid_data.min()
+            max_val = valid_data.max()
+
+            for row_idx in range(num_table_rows): # Iterate using numeric row index
+                value = pivot_table.iloc[row_idx, col_idx]
+
+                if pd.isna(value):
+                    cell_colors_list[row_idx][col_idx] = nan_color
+                else:
+                    if min_val == max_val: # All valid values are the same or only one valid value
+                        cell_colors_list[row_idx][col_idx] = custom_cmap(0.0) # Color as best (light green)
+                    else:
+                        norm_value = (value - min_val) / (max_val - min_val)
+                        cell_colors_list[row_idx][col_idx] = custom_cmap(norm_value)
+        # --- End of color grading ---
+
         # Increase figure height to accommodate table
-        # Original figsize: (max(15, num_queries * 1.5), 10)
-        # Let's add some fixed height for the table, e.g., 0.5 inch per row + header
         table_height_inches = max(2, len(row_labels) * 0.3 + 0.5) # Minimum 2 inches, or scaled by rows
         current_fig_width, current_fig_height = fig.get_size_inches()
         fig.set_size_inches(current_fig_width, current_fig_height + table_height_inches)
 
-        the_table = plt.table(cellText=cell_text_values, # Use the list of lists here
+        the_table = plt.table(cellText=cell_text_values, 
                               rowLabels=row_labels,
                               colLabels=col_labels,
+                              cellColours=cell_colors_list, # Add the calculated cell colors
                               loc='bottom', # Place table at the bottom of the axes area
                               bbox=[0, -0.35 - 0.05 * len(row_labels), 1, 0.3 + 0.05 * len(row_labels)] # x, y, width, height relative to axes
                               )
