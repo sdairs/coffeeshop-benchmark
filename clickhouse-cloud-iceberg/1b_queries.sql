@@ -373,52 +373,54 @@ FROM city_quarter_subcat
 ORDER BY city, sales_quarter, subcat_rank;
 
 -- 15
-CREATE OR REPLACE TABLE query15 AS
+CREATE OR REPLACE TABLE query15
+ORDER BY (city, product_name, sales_quarter) AS
 WITH base_data AS (
     SELECT
+        f.location_id as location_id,
+        l.city,
+        f.product_name,
+        toStartOfQuarter(f.order_date)       AS sales_quarter,
+        sum(f.sales_amount)                  AS total_sales,
+        sum(f.sales_amount * (f.discount_percentage / 100.0)) AS total_discount,
+        sum(f.quantity * p.standard_cost)    AS total_cogs
+    FROM  coffeeshop.fact_sales_1b  AS f
+    INNER JOIN coffeeshop.dim_products  AS p
+           ON f.product_name = p.name
+          AND f.order_date   BETWEEN p.from_date AND p.to_date
+    INNER JOIN coffeeshop.dim_locations AS l
+           ON f.location_id = l.location_id
+    WHERE f.order_date BETWEEN toDate('2022-01-01') AND toDate('2024-12-31')
+    GROUP BY
         f.location_id,
         l.city,
         f.product_name,
-        DATE_TRUNC('quarter', f.order_date) AS sales_quarter,
-        SUM(f.sales_amount) AS total_sales,
-        SUM(f.sales_amount * (f.discount_percentage / 100.0)) AS total_discount,
-        SUM(f.quantity * p.standard_cost) AS total_cogs
-    FROM coffeeshop.fact_sales_1b f
-    JOIN coffeeshop.dim_products p
-        ON f.product_name = p.name
-        AND f.order_date BETWEEN p.from_date AND p.to_date
-    JOIN coffeeshop.dim_locations l
-        ON f.location_id = l.location_id
-    WHERE f.order_date BETWEEN '2022-01-01' AND '2024-12-31'
-    GROUP BY f.location_id, l.city, f.product_name, DATE_TRUNC('quarter', f.order_date)
+        sales_quarter
 ),
 with_profit AS (
     SELECT
         *,
         total_sales - total_discount - total_cogs AS profit
     FROM base_data
-),
-with_yoy AS (
-    SELECT
-        *,
-        LAG(profit) OVER (PARTITION BY location_id, product_name ORDER BY sales_quarter) AS prev_profit,
-        ROUND(
-            CASE
-                WHEN LAG(profit) OVER (PARTITION BY location_id, product_name ORDER BY sales_quarter) = 0 THEN NULL
-                ELSE 100.0 * (profit - LAG(profit) OVER (PARTITION BY location_id, product_name ORDER BY sales_quarter)) /
-                     LAG(profit) OVER (PARTITION BY location_id, product_name ORDER BY sales_quarter)
-            END, 2
-        ) AS yoy_profit_pct
-    FROM with_profit
 )
 SELECT
     city,
     product_name,
     sales_quarter,
     profit,
-    prev_profit,
-    yoy_profit_pct
-FROM with_yoy;
+    lagInFrame(profit) OVER w AS prev_profit,
+    round(
+        if(prev_profit = 0 OR prev_profit IS NULL,
+           NULL,
+           100.0 * (profit - prev_profit) / prev_profit),
+        2
+    )                                           AS yoy_profit_pct
+FROM with_profit
+WINDOW w AS (
+    PARTITION BY location_id, product_name
+    ORDER BY   sales_quarter
+);
+
 
 -- 16
 WITH seasonal_data AS (
