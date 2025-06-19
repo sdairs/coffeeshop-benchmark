@@ -34,7 +34,7 @@ fi
 SERVER_SYSTEM="ClickHouse Cloud 25.4 30 vCPU and 120 GiB per replica / 3 replicas"
 DATE_TODAY=$(date +"%Y-%m-%d")
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-SKIP_LOAD=true
+SKIP_LOAD=false
 
 # Ensure results directory exists
 mkdir -p results
