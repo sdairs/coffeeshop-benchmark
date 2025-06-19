@@ -2,6 +2,20 @@
 
 set -euo pipefail
 
+SKIP_LOAD=false
+REPEATS=5
+
+# Internal variables
+NUM_NODES=3
+CPU_CORES_PER_NODE=30
+MEMORY_PER_NODE=120  # in GiB
+CSP="AWS"
+REGION="us-east-2"
+TIER_SCALE_PRICE_PER_UNIT_PER_HR="0.2985"
+TIER_ENTERPRISE_PRICE_PER_UNIT_PER_HR="0.3903"
+DATE_TODAY=$(date +"%Y-%m-%d")
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+
 # Required environment variables
 : "${CLICKHOUSE_HOST:?CLICKHOUSE_HOST is required}"
 : "${CLICKHOUSE_USER:?CLICKHOUSE_USER is required}"
@@ -18,11 +32,10 @@ if [[ $# -lt 1 ]]; then
     exit 1
 fi
 
-
 # Input
 SCALE="$1"
 DB_NAME="coffeeshop_${SCALE}"
-REPEATS=5
+
 
 if [[ "$SCALE" != "500m" && "$SCALE" != "1b" && "$SCALE" != "5b" ]]; then
     echo "❌ Invalid SCALE: $SCALE"
@@ -30,11 +43,7 @@ if [[ "$SCALE" != "500m" && "$SCALE" != "1b" && "$SCALE" != "5b" ]]; then
     exit 1
 fi
 
-# Internal variables
-SERVER_SYSTEM="ClickHouse Cloud 25.4 30 vCPU and 120 GiB per replica / 3 replicas"
-DATE_TODAY=$(date +"%Y-%m-%d")
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-SKIP_LOAD=false
+
 
 # Ensure results directory exists
 mkdir -p results
@@ -60,23 +69,54 @@ RUNTIMES=$(cat "$RESULT_FILE_RUNTIMES")
 
 # Compute fastest times and sum
 FASTEST=$(echo "$RUNTIMES" | jq '[.[] | min]')
-SUM_FASTEST=$(echo "$FASTEST" | jq 'add | tonumber')
+SUM_FASTEST=$(echo "$FASTEST" | jq 'add | tonumber') # in seconds
+
+# Calculate units used
+TOTAL_CPU=$((NUM_NODES * CPU_CORES_PER_NODE))
+TOTAL_RAM=$((NUM_NODES * MEMORY_PER_NODE))  # GiB
+CPU_UNITS=$(awk "BEGIN { printf \"%.2f\", $TOTAL_CPU / 2 }")
+RAM_UNITS=$(awk "BEGIN { printf \"%.2f\", $TOTAL_RAM / 8 }")
+UNITS_USED=$(awk "BEGIN { printf \"%.2f\", ($TOTAL_CPU / 2 > $TOTAL_RAM / 8) ? $TOTAL_CPU / 2 : $TOTAL_RAM / 8 }")
+
+# Calculate per-tier cost (in seconds → hours)
+SUM_FASTEST_HOURS=$(awk "BEGIN { printf \"%.10f\", $SUM_FASTEST / 3600 }")
+
+TIER_SCALE_COST_FMT=$(awk "BEGIN { printf \"%.5f\", $SUM_FASTEST_HOURS * $UNITS_USED * $TIER_SCALE_PRICE_PER_UNIT_PER_HR }")
+TIER_ENTERPRISE_COST_FMT=$(awk "BEGIN { printf \"%.5f\", $SUM_FASTEST_HOURS * $UNITS_USED * $TIER_ENTERPRISE_PRICE_PER_UNIT_PER_HR }")
 
 # Write final pretty JSON
 jq -n \
-  --arg server_system "$SERVER_SYSTEM" \
   --arg date "$DATE_TODAY" \
   --arg scale "$SCALE" \
+  --arg csp "$CSP" \
+  --arg region "$REGION" \
+  --argjson num_nodes "$NUM_NODES" \
+  --argjson cpu_cores_per_node "$CPU_CORES_PER_NODE" \
+  --argjson memory_per_node "$MEMORY_PER_NODE" \
   --argjson result "$RUNTIMES" \
   --argjson fastest "$FASTEST" \
   --argjson sum_of_fastest "$SUM_FASTEST" \
+  --argjson units_used "$UNITS_USED" \
+  --arg tier_scale_price_per_unit_per_hr "$TIER_SCALE_PRICE_PER_UNIT_PER_HR" \
+  --arg tier_enterprise_price_per_unit_per_hr "$TIER_ENTERPRISE_PRICE_PER_UNIT_PER_HR" \
+  --arg tier_scale_cost "$TIER_SCALE_COST_FMT" \
+  --arg tier_enterprise_cost "$TIER_ENTERPRISE_COST_FMT" \
   '{
-    server_system: $server_system,
     date: $date,
     scale: $scale,
+    csp: $csp,
+    region: $region,
+    num_nodes: $num_nodes,
+    cpu_cores_per_node: $cpu_cores_per_node,
+    memory_per_node: $memory_per_node,
     result: $result,
     fastest: $fastest,
-    sum_of_fastest: ($sum_of_fastest | tonumber)
+    sum_of_fastest: $sum_of_fastest,
+    units_used: ($units_used | tonumber),
+    tier_scale_price_per_unit_per_hr: ($tier_scale_price_per_unit_per_hr | tonumber),
+    tier_enterprise_price_per_unit_per_hr: ($tier_enterprise_price_per_unit_per_hr | tonumber),
+    tier_scale_cost: ($tier_scale_cost | tonumber),
+    tier_enterprise_cost: ($tier_enterprise_cost | tonumber)
   }' > "$RESULT_FILE_JSON"
 
 # Clean up intermediate runtime file
