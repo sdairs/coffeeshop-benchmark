@@ -8,8 +8,8 @@ SELECT
         ORDER BY f.order_date
         ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
     ) AS rolling_7day_avg
-FROM coffeeshop_native.fact_sales_500m f
-JOIN coffeeshop_native.dim_locations l
+FROM fact_sales f
+JOIN dim_locations l
     ON f.location_id = l.location_id
 GROUP BY
     f.order_date,
@@ -24,7 +24,7 @@ WITH monthly_sales AS (
         DATE_TRUNC('month', f.order_date) AS sales_month,
         f.product_name,
         SUM(f.sales_amount) AS total_sales
-    FROM coffeeshop_native.fact_sales_500m f
+    FROM fact_sales f
     GROUP BY
         DATE_TRUNC('month', f.order_date),
         f.product_name
@@ -44,8 +44,8 @@ WITH season_discount AS (
         l.state,
         f.season,
         AVG(f.discount_percentage) AS avg_discount
-    FROM coffeeshop_native.fact_sales_500m f
-    JOIN coffeeshop_native.dim_locations l
+    FROM fact_sales f
+    JOIN dim_locations l
         ON f.location_id = l.location_id
     GROUP BY
         l.city,
@@ -79,8 +79,8 @@ SELECT
     SUM(f.quantity) AS total_quantity_sold,
     SUM(f.sales_amount) AS total_sales_amount,
     (p.standard_price - p.standard_cost) * SUM(f.quantity) AS theoretical_margin
-FROM coffeeshop_native.fact_sales_500m f
-JOIN coffeeshop_native.dim_products p
+FROM fact_sales f
+JOIN dim_products p
     ON f.product_name = p.name
     AND f.order_date BETWEEN p.from_date AND p.to_date
 GROUP BY
@@ -98,8 +98,8 @@ WITH daily_city_qty AS (
         f.order_date,
         l.city,
         SUM(f.quantity) AS daily_qty
-    FROM coffeeshop_native.fact_sales_500m f
-    JOIN coffeeshop_native.dim_locations l
+    FROM fact_sales f
+    JOIN dim_locations l
         ON f.location_id = l.location_id
     GROUP BY
         f.order_date,
@@ -124,8 +124,8 @@ WITH monthly_cat AS (
         DATE_TRUNC('month', f.order_date) AS sales_month,
         p.category,
         SUM(f.sales_amount) AS monthly_revenue
-    FROM coffeeshop_native.fact_sales_500m f
-    JOIN coffeeshop_native.dim_products p
+    FROM fact_sales f
+    JOIN dim_products p
         ON f.product_name = p.name
         AND f.order_date BETWEEN p.from_date AND p.to_date
     GROUP BY
@@ -146,8 +146,8 @@ WITH yearly_sales AS (
         l.state,
         YEAR(f.order_date) AS sales_year,
         SUM(f.sales_amount) AS total_sales_year
-    FROM coffeeshop_native.fact_sales_500m f
-    JOIN coffeeshop_native.dim_locations l
+    FROM fact_sales f
+    JOIN dim_locations l
         ON f.location_id = l.location_id
     GROUP BY
         l.location_id,
@@ -177,10 +177,10 @@ WITH city_quarter_subcat AS (
         DATE_TRUNC('quarter', f.order_date) AS sales_quarter,
         p.subcategory,
         SUM(f.sales_amount) AS total_sales
-    FROM coffeeshop_native.fact_sales_500m f
-    JOIN coffeeshop_native.dim_locations l
+    FROM fact_sales f
+    JOIN dim_locations l
         ON f.location_id = l.location_id
-    JOIN coffeeshop_native.dim_products p
+    JOIN dim_products p
         ON f.product_name = p.name
         AND f.order_date BETWEEN p.from_date AND p.to_date
     GROUP BY
@@ -203,8 +203,8 @@ WITH daily_discount AS (
         l.city,
         f.order_date,
         AVG(f.discount_percentage) AS avg_discount
-    FROM coffeeshop_native.fact_sales_500m f
-    JOIN coffeeshop_native.dim_locations l
+    FROM fact_sales f
+    JOIN dim_locations l
         ON f.location_id = l.location_id
     GROUP BY
         l.city,
@@ -229,13 +229,13 @@ WITH daily_orders AS (
         f.order_date,
         l.city,
         COUNT(DISTINCT f.order_id) AS daily_distinct_orders
-    FROM coffeeshop_native.fact_sales_500m f
-    JOIN coffeeshop_native.dim_locations l
+    FROM fact_sales f
+    JOIN dim_locations l
         ON f.location_id = l.location_id
     GROUP BY
         l.city,
         f.order_date
-        
+
 )
 SELECT
     coalesce(order_date, DATE('1970-01-01')) AS order_date,
@@ -256,10 +256,10 @@ WITH city_quarter_subcat AS (
         DATE_TRUNC('quarter', f.order_date) AS sales_quarter,
         p.subcategory,
         SUM(f.sales_amount) AS total_sales
-    FROM coffeeshop_native.fact_sales_500m f
-    JOIN coffeeshop_native.dim_locations l
+    FROM fact_sales f
+    JOIN dim_locations l
         ON f.location_id = l.location_id
-    JOIN coffeeshop_native.dim_products p
+    JOIN dim_products p
         ON f.product_name = p.name
         AND f.order_date BETWEEN p.from_date AND p.to_date
     WHERE l.city IN ('Charlotte', 'Houston')
@@ -284,10 +284,10 @@ WITH city_quarter_subcat AS (
         DATE_TRUNC('quarter', f.order_date) AS sales_quarter,
         p.subcategory,
         SUM(f.sales_amount) AS total_sales
-    FROM coffeeshop_native.fact_sales_500m f
-    JOIN coffeeshop_native.dim_locations l
+    FROM fact_sales f
+    JOIN dim_locations l
         ON f.location_id = l.location_id
-    JOIN coffeeshop_native.dim_products p
+    JOIN dim_products p
         ON f.product_name = p.name
         AND f.order_date BETWEEN p.from_date AND p.to_date
     WHERE l.city IN ('Charlotte', 'Houston')
@@ -316,10 +316,10 @@ WITH city_quarter_subcat AS (
         DATE_TRUNC('quarter', f.order_date) AS sales_quarter,
         p.subcategory,
         SUM(f.sales_amount) AS total_sales
-    FROM coffeeshop_native.fact_sales_500m f
-    JOIN coffeeshop_native.dim_locations l
+    FROM fact_sales f
+    JOIN dim_locations l
         ON f.location_id = l.location_id
-    JOIN coffeeshop_native.dim_products p
+    JOIN dim_products p
         ON f.product_name = p.name
         AND f.order_date BETWEEN p.from_date AND p.to_date
     WHERE l.city = 'Austin'
@@ -348,10 +348,10 @@ WITH city_quarter_subcat AS (
         DATE_TRUNC('quarter', f.order_date) AS sales_quarter,
         p.subcategory,
         SUM(f.sales_amount) AS total_sales
-    FROM coffeeshop_native.fact_sales_500m f
-    JOIN coffeeshop_native.dim_locations l
+    FROM fact_sales f
+    JOIN dim_locations l
         ON f.location_id = l.location_id
-    JOIN coffeeshop_native.dim_products p
+    JOIN dim_products p
         ON f.product_name = p.name
         AND f.order_date BETWEEN p.from_date AND p.to_date
     WHERE DATE_TRUNC('quarter', f.order_date) IN (
@@ -384,11 +384,11 @@ WITH base_data AS (
         sum(f.sales_amount)                  AS total_sales,
         sum(f.sales_amount * (f.discount_percentage / 100.0)) AS total_discount,
         sum(f.quantity * p.standard_cost)    AS total_cogs
-    FROM  coffeeshop_native.fact_sales_500m  AS f
-    INNER JOIN coffeeshop_native.dim_products  AS p
+    FROM  fact_sales  AS f
+    INNER JOIN dim_products  AS p
            ON f.product_name = p.name
           AND f.order_date   BETWEEN p.from_date AND p.to_date
-    INNER JOIN coffeeshop_native.dim_locations AS l
+    INNER JOIN dim_locations AS l
            ON f.location_id = l.location_id
     WHERE f.order_date BETWEEN toDate('2022-01-01') AND toDate('2024-12-31')
     GROUP BY
@@ -430,11 +430,11 @@ WITH seasonal_data AS (
         SUM(f.sales_amount) AS total_sales,
         SUM(f.quantity) AS total_units,
         COUNT(DISTINCT f.order_id) AS order_count
-    FROM coffeeshop_native.fact_sales_500m f
-    JOIN coffeeshop_native.dim_products p
+    FROM fact_sales f
+    JOIN dim_products p
         ON f.product_name = p.name
         AND DATE(f.order_date) BETWEEN DATE(p.from_date) AND DATE(p.to_date)
-    JOIN coffeeshop_native.dim_locations l
+    JOIN dim_locations l
         ON f.location_id = l.location_id
     WHERE DATE(f.order_date) BETWEEN DATE('2023-01-01') AND DATE('2024-06-30')
     GROUP BY l.state, f.season, p.category
@@ -459,13 +459,13 @@ WITH raw_agg AS (
         SUM(f.sales_amount)       AS total_sales,
         SUM(f.quantity)           AS total_units,
         COUNT(DISTINCT f.order_id) AS order_count
-    FROM coffeeshop_native.fact_sales_500m AS f
-    JOIN coffeeshop_native.dim_products AS p
+    FROM fact_sales AS f
+    JOIN dim_products AS p
       ON f.product_id = p.product_id
      AND DATE(f.order_date) BETWEEN DATE(p.from_date) AND DATE(p.to_date)
-    JOIN coffeeshop_native.dim_locations AS l
+    JOIN dim_locations AS l
       ON f.location_id = l.location_id
-    WHERE 
+    WHERE
         l.region        = 'West'
       AND f.time_of_day  = 'Morning'
       AND p.name         = 'Frappe'
