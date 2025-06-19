@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SKIP_LOAD=true
+SKIP_LOAD=false
 REPEATS=5
 
 # Internal variables
@@ -42,7 +42,6 @@ if [[ "$SCALE" != "500m" && "$SCALE" != "1b" && "$SCALE" != "5b" ]]; then
     echo "Valid options are: 500m, 1b, 5b"
     exit 1
 fi
-
 
 
 
