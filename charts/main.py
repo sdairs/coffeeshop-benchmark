@@ -336,7 +336,6 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
                         text_x = cost_value + padding_abs
                         ha = 'left'
 
-                    # Specific handling for zero or very small bars
                     if cost_value == 0:
                         text_x = padding_abs # Place at padding distance from origin
                         ha = 'left'
@@ -349,6 +348,56 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
                     text_label_color = 'white' # Default to white
                     if ha == 'right': # Text is inside the bar
                         text_label_color = 'black' # Use black for better contrast inside light bars
+                    
+                    ax_chart.text(text_x, y_bar_center, label_text,
+                                  va='center', ha=ha, color=text_label_color, fontsize=8)
+            
+            # Add cost labels if this is a Total Performance chart and cost data is available
+            elif horizontal_bars and 'total_cost_value' in df_filtered.columns and 'total query performance' in title.lower():
+                perf_value = row.values[0] # This is the bar's width (the performance time)
+                y_bar_center = positions[0]    # This is the y-coordinate of the bar's center
+
+                # For performance charts, we need to find the corresponding cost value
+                # We'll need to look up the cost from the cost data based on hardware_config and dataset_size
+                # For now, let's add a placeholder that can be enhanced when cost data is available
+                # This would require passing cost data to the function or having it available in df_filtered
+                
+                # Check if we have cost data available in the dataframe (this would need to be added in the main function)
+                cost_series = df_filtered.loc[df_filtered['hardware_config'] == config_name, 'total_cost_value']
+                
+                if not cost_series.empty and pd.notna(cost_series.iloc[0]):
+                    cost_value = cost_series.iloc[0]
+                    label_text = f"(cost: ${cost_value:.2f})" # Format as, e.g., "(cost: $1.23)"
+                    
+                    # Use similar positioning logic as for cost charts
+                    current_xlim = ax_chart.get_xlim()
+                    plot_data_range = current_xlim[1] - current_xlim[0]
+                    if plot_data_range == 0:
+                        plot_data_range = 1
+                        
+                    padding_abs = plot_data_range * 0.015
+                    threshold_for_inside = current_xlim[1] * 0.85
+
+                    text_x = 0
+                    ha = 'left'
+
+                    if perf_value > threshold_for_inside:
+                        text_x = perf_value - padding_abs
+                        ha = 'right'
+                    else:
+                        text_x = perf_value + padding_abs
+                        ha = 'left'
+
+                    if perf_value == 0:
+                        text_x = padding_abs
+                        ha = 'left'
+                    elif perf_value < padding_abs and ha == 'right':
+                        text_x = perf_value + padding_abs
+                        ha = 'left'
+                    
+                    text_label_color = 'white'
+                    if ha == 'right':
+                        text_label_color = 'black'
                     
                     ax_chart.text(text_x, y_bar_center, label_text,
                                   va='center', ha=ha, color=text_label_color, fontsize=8)
@@ -627,11 +676,30 @@ def main():
         df_total_perf_grouped['query_name'] = 'Total_Performance' # Use a single 'query' for plotting
         df_total_perf_data_for_labels = df_total_perf_grouped.copy() # Save for use in cost chart labels
 
+        # Prepare cost data for labels in performance charts, if available
+        df_cost_labels_prepared = pd.DataFrame()
+        if not df_cost.empty:
+            df_total_cost_for_labels = df_cost.groupby(['database', 'hardware_config', 'dataset_size', 'metric_type'])['value'].sum().reset_index()
+            df_cost_labels_prepared = df_total_cost_for_labels[['hardware_config', 'dataset_size', 'value']].copy()
+            df_cost_labels_prepared.rename(columns={'value': 'total_cost_value'}, inplace=True)
+
         for ds_size in dataset_sizes:
-            df_filtered_perf_total = df_total_perf_grouped[(df_total_perf_grouped['dataset_size'] == ds_size) & (df_total_perf_grouped['metric_type'] == 'performance')]
+            df_filtered_perf_total = df_total_perf_grouped[(df_total_perf_grouped['dataset_size'] == ds_size) & (df_total_perf_grouped['metric_type'] == 'performance')].copy()
             if df_filtered_perf_total.empty:
                 print(f"No data for total perf chart for {ds_size}")
                 continue
+            
+            # Merge cost labels if cost data was prepared
+            if not df_cost_labels_prepared.empty:
+                current_ds_cost_labels = df_cost_labels_prepared[df_cost_labels_prepared['dataset_size'] == ds_size]
+                if not current_ds_cost_labels.empty:
+                    df_filtered_perf_total = pd.merge(
+                        df_filtered_perf_total,
+                        current_ds_cost_labels[['hardware_config', 'total_cost_value']], # Only merge these two columns
+                        on='hardware_config',
+                        how='left'
+                    )
+            
             generate_chart_and_table(df_filtered_perf_total,
                                      title=f"Total Query Performance - {ds_size}",
                                      output_filename_base=f"total_perf_{ds_size}",
