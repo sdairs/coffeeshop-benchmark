@@ -662,7 +662,7 @@ def main():
             print(f"No data or queries for perf chart (non Q10/16) for {ds_size}")
             continue
         generate_chart_and_table(df_filtered, 
-                                 title=f"Query Performance (excl. Q10, Q16) - {ds_size}", 
+                                 title=f"Query Performance (excl. Q10, Q16) - {ds_size} (Seconds)", 
                                  output_filename_base=f"perf_excl_q10_q16_{ds_size}",
                                  queries_to_plot=queries_group1_2)
 
@@ -675,7 +675,7 @@ def main():
             print(f"No data or queries for cost chart (non Q10/16) for {ds_size}")
             continue
         generate_chart_and_table(df_filtered, 
-                                 title=f"Query Cost (excl. Q10, Q16) - {ds_size}", 
+                                 title=f"Query Cost (excl. Q10, Q16) - {ds_size} ($)", 
                                  output_filename_base=f"cost_excl_q10_q16_{ds_size}",
                                  queries_to_plot=queries_group1_2)
 
@@ -687,7 +687,7 @@ def main():
             print(f"No data or queries for perf chart (Q10/16) for {ds_size}")
         else:
             generate_chart_and_table(df_filtered_perf, 
-                                     title=f"Query Performance (Q10, Q16) - {ds_size}", 
+                                     title=f"Query Performance (Q10, Q16) - {ds_size} (Seconds)", 
                                      output_filename_base=f"perf_q10_q16_{ds_size}",
                                      queries_to_plot=queries_group3)
         # Cost for Q10, Q16
@@ -696,7 +696,7 @@ def main():
             print(f"No data or queries for cost chart (Q10/16) for {ds_size}")
         else:
             generate_chart_and_table(df_filtered_cost, 
-                                     title=f"Query Cost (Q10, Q16) - {ds_size}", 
+                                     title=f"Query Cost (Q10, Q16) - {ds_size} ($)", 
                                      output_filename_base=f"cost_q10_q16_{ds_size}",
                                      queries_to_plot=queries_group3)
 
@@ -732,7 +732,7 @@ def main():
                     )
             
             generate_chart_and_table(df_filtered_perf_total,
-                                     title=f"Total Query Performance - {ds_size}",
+                                     title=f"Total Query Performance - {ds_size} (Seconds)",
                                      output_filename_base=f"total_perf_{ds_size}",
                                      queries_to_plot=['Total_Performance'],
                                      horizontal_bars=True)
@@ -771,7 +771,7 @@ def main():
                     )
             
             generate_chart_and_table(df_filtered_cost_total,
-                                     title=f"Total Query Cost - {ds_size}",
+                                     title=f"Total Query Cost - {ds_size} ($)",
                                      output_filename_base=f"total_cost_{ds_size}",
                                      queries_to_plot=['Total_Cost'],
                                      horizontal_bars=True)
