@@ -397,12 +397,23 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
     ax_table_area.axis('off') # No visible axis for the table area
     ax_table_area.set_facecolor('#1C1C1A') # Ensure table area background is also dark
 
-    # Conditionally round for the table based on chart type
-    if 'cost' in title.lower(): # Check if it's a cost chart
-        table_pivot_df = pivot_df.round(3) # Round cost values to 3 decimal places
-    else:
-        table_pivot_df = pivot_df # Keep full precision for performance charts
-    table_data = table_pivot_df.fillna('N/A').values.tolist()
+    # Format table data to show up to 3 decimal places with trailing zeros for consistency
+    def format_number(value):
+        if pd.isna(value):
+            return 'N/A'
+        try:
+            # Format to exactly 3 decimal places with trailing zeros for consistency
+            formatted = f"{float(value):.3f}"
+            return formatted
+        except (ValueError, TypeError):
+            return str(value)
+    
+    # Apply formatting to all numeric values in the pivot table
+    table_data = []
+    for row in pivot_df.values:
+        formatted_row = [format_number(val) for val in row]
+        table_data.append(formatted_row)
+    
     row_labels = pivot_df.index.tolist()
     col_labels = pivot_df.columns.tolist()
 
