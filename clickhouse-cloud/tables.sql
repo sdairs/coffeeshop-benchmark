@@ -50,7 +50,7 @@ SELECT
 FROM icebergS3('s3://clickhouse-datasets/coffeeshop/dim_products/');
 
 
-CREATE TABLE IF NOT EXISTS fact_sales
+CREATE TABLE fact_sales
 (
     order_id             String,
     order_line_id        String,
