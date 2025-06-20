@@ -8,35 +8,38 @@ set -euo pipefail
 : "${CLICKHOUSE_USER:?CLICKHOUSE_USER is required}"
 : "${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD is required}"
 
+
 # Usage check
-if [[ $# -ne 10 ]]; then
-    echo "Usage: $0 <SCALE> <SKIP_LOAD> <REPEATS> <NUM_NODES> <CPU_CORES_PER_NODE> <MEMORY_PER_NODE> <CSP> <REGION> <TIER_SCALE_PRICE> <TIER_ENTERPRISE_PRICE>"
+if [[ $# -lt 10 || $# -gt 12 ]]; then
+    echo "Usage: $0 <CLICKHOUSE_VERSION> <SCALE> <SKIP_LOAD> <REPEATS> <NUM_NODES> <CPU_CORES_PER_NODE> <MEMORY_PER_NODE> <CSP> <REGION> <TIER_SCALE_PRICE> <TIER_ENTERPRISE_PRICE>"
     echo ""
     echo "Required parameters:"
-    echo "  SCALE                             (500m | 1b | 5b)"
-    echo "  SKIP_LOAD                         (true | false)"
-    echo "  REPEATS                           (number of repetitions per query)"
-    echo "  NUM_NODES                         (e.g., 8)"
-    echo "  CPU_CORES_PER_NODE                (e.g., 60)"
-    echo "  MEMORY_PER_NODE                   (e.g., 240 for GiB)"
-    echo "  CSP                               (e.g., AWS, GCP)"
-    echo "  REGION                            (e.g., us-east-2)"
-    echo "  TIER_SCALE_PRICE_PER_UNIT_PER_HR (e.g., 0.2985)"
+    echo "  CLICKHOUSE_VERSION                  (e.g., 24.1.2.3)"
+    echo "  SCALE                               (500m | 1b | 5b)"
+    echo "  SKIP_LOAD                           (true | false)"
+    echo "  REPEATS                             (number of repetitions per query)"
+    echo "  NUM_NODES                           (e.g., 8)"
+    echo "  CPU_CORES_PER_NODE                  (e.g., 60)"
+    echo "  MEMORY_PER_NODE                     (e.g., 240 for GiB)"
+    echo "  CSP                                 (e.g., AWS, GCP)"
+    echo "  REGION                              (e.g., us-east-2)"
+    echo "  TIER_SCALE_PRICE_PER_UNIT_PER_HR   (e.g., 0.2985)"
     echo "  TIER_ENTERPRISE_PRICE_PER_UNIT_PER_HR (e.g., 0.3903)"
     exit 1
 fi
 
 # Assign inputs
-SCALE="$1"
-SKIP_LOAD="$2"
-REPEATS="$3"
-NUM_NODES="$4"
-CPU_CORES_PER_NODE="$5"
-MEMORY_PER_NODE="$6"
-CSP="$7"
-REGION="$8"
-TIER_SCALE_PRICE_PER_UNIT_PER_HR="$9"
-TIER_ENTERPRISE_PRICE_PER_UNIT_PER_HR="${10}"
+CLICKHOUSE_VERSION="$1"
+SCALE="$2"
+SKIP_LOAD="$3"
+REPEATS="$4"
+NUM_NODES="$5"
+CPU_CORES_PER_NODE="$6"
+MEMORY_PER_NODE="$7"
+CSP="$8"
+REGION="$9"
+TIER_SCALE_PRICE_PER_UNIT_PER_HR="${10}"
+TIER_ENTERPRISE_PRICE_PER_UNIT_PER_HR="${11}"
 
 # Validate SCALE
 if [[ "$SCALE" != "500m" && "$SCALE" != "1b" && "$SCALE" != "5b" ]]; then
@@ -117,6 +120,7 @@ TIER_ENTERPRISE_COSTS_PER_QUERY=$(echo "$FASTEST" | jq --arg units "$UNITS_USED"
 # Write final pretty JSON
 jq -n \
   --arg date "$DATE_TODAY" \
+  --arg clickhouse_version "$CLICKHOUSE_VERSION" \
   --arg scale "$SCALE" \
   --arg csp "$CSP" \
   --arg region "$REGION" \
@@ -135,6 +139,7 @@ jq -n \
   --argjson tier_enterprise_cost_per_query "$TIER_ENTERPRISE_COSTS_PER_QUERY" \
   '{
     date: $date,
+    clickhouse_version: $clickhouse_version,
     scale: $scale,
     csp: $csp,
     region: $region,
