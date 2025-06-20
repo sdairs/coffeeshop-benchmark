@@ -301,6 +301,21 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
             # For horizontal bars, 'indices' are y-coordinates, 'row.values' are widths
             bars = ax_chart.barh(positions, row.values, height=bar_width, label=config_name, color=color, align='center', edgecolor='white', linewidth=0.5) # Add subtle white edge to bars
 
+            # Add hardware configuration name inside the bar for total charts
+            if 'total query' in title.lower():
+                bar_value = row.values[0]
+                y_bar_center = positions[0]
+                
+                # Position the hardware name at the left side of the bar with some padding
+                current_xlim = ax_chart.get_xlim()
+                plot_data_range = current_xlim[1] - current_xlim[0]
+                padding_abs = plot_data_range * 0.01  # Small padding from the left edge
+                
+                # Place hardware name at the left side of the bar
+                hardware_name_x = padding_abs
+                ax_chart.text(hardware_name_x, y_bar_center, config_name,
+                              va='center', ha='left', color='black', fontsize=10, weight='bold')
+
             # Add performance labels if this is a Total Cost chart and data is available
             if horizontal_bars and 'total_perf_value' in df_filtered.columns and 'total query cost' in title.lower():
                 cost_value = row.values[0] # This is the bar's width (the cost)
