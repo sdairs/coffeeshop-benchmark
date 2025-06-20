@@ -232,7 +232,7 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
     fig = plt.figure(figsize=(max(15, num_queries * 1.5), 10)) # Increased height for table
     fig.patch.set_facecolor('#1C1C1A') # Set figure background
 
-    gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1], hspace=0.35) # 2 rows, 1 col; chart gets 3 parts, table 1 part. hspace adds space.
+    gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1], hspace=0.15) # 2 rows, 1 col; chart gets 3 parts, table 1 part. hspace adds space.
     ax_chart = fig.add_subplot(gs[0]) # Axis for the bar chart
     ax_chart.set_facecolor('#1C1C1A') # Set chart area background
 
@@ -363,7 +363,20 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
         ax_chart.grid(True, axis='x', linestyle='--', color='white', alpha=0.5) # Grid for horizontal bars
     else:
         ax_chart.set_xticks(indices)
-        ax_chart.set_xticklabels(pivot_df.columns, rotation=45, ha="right", color='white')
+        # Check if this is a per-query chart (not a total chart)
+        if not ('total query performance' in title.lower() or 'total query cost' in title.lower()):
+            # Transform Query_02 format to Q2 format for per-query charts
+            simplified_labels = []
+            for label in pivot_df.columns:
+                if label.startswith('Query_'):
+                    # Extract the number part and convert Query_02 to Q2
+                    query_num = label.replace('Query_', '')
+                    simplified_labels.append(f'Q{int(query_num)}')
+                else:
+                    simplified_labels.append(label)
+            ax_chart.set_xticklabels(simplified_labels, color='white')  # No rotation for per-query charts
+        else:
+            ax_chart.set_xticklabels(pivot_df.columns, rotation=45, ha="right", color='white')  # Keep rotation for total charts
         ax_chart.set_ylabel('Value (Seconds or Cost)', color='white')
         ax_chart.grid(True, axis='y', linestyle='--', color='white', alpha=0.5) # Grid for vertical bars
 
