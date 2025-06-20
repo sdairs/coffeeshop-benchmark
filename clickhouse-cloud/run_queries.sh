@@ -16,6 +16,7 @@ DB_NAME="$1"
 REPEATS="$2"
 
 QUERY_FILE="queries.sql"
+query_number=1
 
 # Split queries using '-- #' headers
 awk '
@@ -30,18 +31,29 @@ awk '
     fi
 
     echo "👉 Running query:"
-    echo "$query"
+    echo "Q${query_number}"
+#     echo "$query"
     echo ""
 
-    for i in $(seq 1 $REPEATS); do
-#         echo "Run #$i"
-        echo "$query" | clickhouse-client \
+    for i in $(seq 1 "$REPEATS"); do
+        if ! echo "$query" | clickhouse-client \
             --host "${CLICKHOUSE_HOST}" \
             --user "${CLICKHOUSE_USER}" \
             --password "${CLICKHOUSE_PASSWORD}" \
             --secure \
             --database "$DB_NAME" \
-            --time --memory-usage --format=Null --progress 0
+            --time --memory-usage --format=Null --progress 0; then
+
+            echo "❌ Query failed on attempt #$i, skipping to next query"
+            remaining=$((REPEATS - i))
+            for _ in $(seq 1 "$remaining"); do
+                echo "0.00"
+                echo "0"
+                echo ""
+            done
+            break
+        fi
         echo ""
     done
+    ((query_number++))
 done
