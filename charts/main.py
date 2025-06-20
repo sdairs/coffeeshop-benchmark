@@ -478,6 +478,9 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
         try:
             # Format to exactly 3 decimal places with trailing zeros for consistency
             formatted = f"{float(value):.3f}"
+            # Add dollar sign prefix for cost charts
+            if 'cost' in title.lower():
+                formatted = f"${formatted}"
             return formatted
         except (ValueError, TypeError):
             return str(value)
