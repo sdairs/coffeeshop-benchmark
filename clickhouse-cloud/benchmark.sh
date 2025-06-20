@@ -17,31 +17,59 @@ DB_NAME="$1"
 REPEATS="$2"
 RESULT_FILE_RUNTIMES="$3"
 
-QUERY_LOG_FILE="_query_log_${DB_NAME}.txt"
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+LOG_DIR="logs"
+mkdir -p "$LOG_DIR"  # ensure the folder exists
+QUERY_LOG_FILE="${LOG_DIR}/_query_log_${DB_NAME}_${TIMESTAMP}.txt"
 
 echo "Running queries on database: $DB_NAME with $REPEATS repetitions"
 #
 # Run and log
 ./run_queries.sh "$DB_NAME" "$REPEATS" 2>&1 | tee "$QUERY_LOG_FILE"
 
-# Extract only runtime lines (first line in each result pair), and group by REPEATS
-RUNTIME_RESULTS=$(awk -v n="$REPEATS" '
-    /^[0-9]+\.[0-9]+$/ {
-        runtimes[total++] = $1;
-    }
-    END {
-        print "[";
-        for (i = 0; i < total; i += n) {
-            printf "  [";
-            for (j = 0; j < n; ++j) {
-                printf "%s%.3f", (j > 0 ? ", " : ""), runtimes[i + j];
-            }
-            printf "]%s\n", (i + n < total ? "," : "");
+# === Extract runtimes into JSON ===
+RUNTIME_RESULTS=$(awk -v repeats="$REPEATS" '
+BEGIN {
+    FS = "\n";
+    RS = "👉 Running query:\n";
+    print "["
+    first = 1
+}
+NR > 1 {
+    n = 0;
+    delete runtimes;
+
+    # Extract only runtimes (first of each runtime–memory pair)
+    for (i = 1; i <= NF; ++i) {
+        if ($i ~ /^[0-9]+(\.[0-9]+)?$/) {
+            runtimes[n++] = $i + 0;
+            ++i;  # Skip memory line
         }
-        print "]";
     }
+
+    # Pad with 0.00 if too few
+    while (n < repeats) {
+        runtimes[n++] = 0.00;
+    }
+
+    # Output JSON array
+    if (!first) {
+        printf ",\n";
+    }
+    first = 0;
+
+    printf "  [";
+    for (j = 0; j < repeats; ++j) {
+        printf "%s%.3f", (j > 0 ? ", " : ""), runtimes[j];
+    }
+    printf "]";
+}
+END {
+    print "\n]"
+}
 ' "$QUERY_LOG_FILE")
 
-# Write output
+# === Write to output file ===
 echo "$RUNTIME_RESULTS" > "$RESULT_FILE_RUNTIMES"
 echo "Runtime results written to $RESULT_FILE_RUNTIMES"
+

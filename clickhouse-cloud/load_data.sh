@@ -5,7 +5,6 @@ set -e
 : "${CLICKHOUSE_HOST:?CLICKHOUSE_HOST is required}"
 : "${CLICKHOUSE_USER:?CLICKHOUSE_USER is required}"
 : "${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD is required}"
-
 : "${CREATE_FILE:=tables.sql}"  # Defaults to tables.sql if unset
 
 if [[ "$#" -ne 1 ]]; then
