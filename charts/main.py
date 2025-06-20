@@ -351,18 +351,19 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
                     
                     ax_chart.text(text_x, y_bar_center, label_text,
                                   va='center', ha=ha, color=text_label_color, fontsize=8)
+                    
+                    # Add value label to the right of the bar
+                    value_text = f"${cost_value:.2f}" 
+                    value_x = cost_value + padding_abs * 2  # Place further to the right
+                    ax_chart.text(value_x, y_bar_center, value_text,
+                                  va='center', ha='left', color='white', fontsize=9, weight='bold')
             
             # Add cost labels if this is a Total Performance chart and cost data is available
             elif horizontal_bars and 'total_cost_value' in df_filtered.columns and 'total query performance' in title.lower():
                 perf_value = row.values[0] # This is the bar's width (the performance time)
                 y_bar_center = positions[0]    # This is the y-coordinate of the bar's center
 
-                # For performance charts, we need to find the corresponding cost value
-                # We'll need to look up the cost from the cost data based on hardware_config and dataset_size
-                # For now, let's add a placeholder that can be enhanced when cost data is available
-                # This would require passing cost data to the function or having it available in df_filtered
-                
-                # Check if we have cost data available in the dataframe (this would need to be added in the main function)
+                # Check if we have cost data available in the dataframe
                 cost_series = df_filtered.loc[df_filtered['hardware_config'] == config_name, 'total_cost_value']
                 
                 if not cost_series.empty and pd.notna(cost_series.iloc[0]):
@@ -401,10 +402,22 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
                     
                     ax_chart.text(text_x, y_bar_center, label_text,
                                   va='center', ha=ha, color=text_label_color, fontsize=8)
+                    
+                    # Add value label to the right of the bar
+                    value_text = f"{perf_value:.1f}s"
+                    value_x = perf_value + padding_abs * 2  # Place further to the right
+                    ax_chart.text(value_x, y_bar_center, value_text,
+                                  va='center', ha='left', color='white', fontsize=9, weight='bold')
         else:
             ax_chart.bar(positions, row.values, width=bar_width, label=config_name, color=color, edgecolor='white', linewidth=0.5) # Add subtle white edge to bars
 
     if horizontal_bars:
+        # Add padding to the right side for total charts to accommodate value labels
+        current_xlim = ax_chart.get_xlim()
+        max_bar_value = pivot_df.values.max()  # Get the maximum value from all bars
+        padding_extension = max_bar_value * 0.15  # Add 15% padding to the right
+        ax_chart.set_xlim(current_xlim[0], max_bar_value + padding_extension)
+        
         ax_chart.invert_yaxis() # To have Query 01 at the top
         ax_chart.grid(True, axis='x', linestyle='--', color='white', alpha=0.5) # Grid for horizontal bars
         ax_chart.set_yticks([]) # Remove y-axis ticks
