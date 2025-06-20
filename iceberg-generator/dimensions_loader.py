@@ -11,7 +11,7 @@ spark = (
     SparkSession.builder
     .appName("dimensions_loader")
     .config("spark.sql.catalog.glue_catalog", "org.apache.iceberg.spark.SparkCatalog")
-    .config("spark.sql.catalog.glue_catalog.warehouse", "s3://clickhouse-coffeeshop-benchmark/coffeeshop/")
+    .config("spark.sql.catalog.glue_catalog.warehouse", "s3://clickhouse-datasets/coffeeshop/")
     .config("spark.sql.catalog.glue_catalog.catalog-impl", "org.apache.iceberg.aws.glue.GlueCatalog")
     .config("spark.sql.catalog.glue_catalog.io-impl", "org.apache.iceberg.aws.s3.S3FileIO")
     .config("spark.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
@@ -19,7 +19,7 @@ spark = (
 )
 
 # -------------------- Parameters --------------------
-input_s3_path = "s3://clickhouse-coffeeshop-benchmark/csv/"
+input_s3_path = "s3://clickhouse-datasets/coffeeshop/dimensions/"
 
 dim_locations_file = "dim_locations.csv"
 dim_products_file = "dim_products.csv"
