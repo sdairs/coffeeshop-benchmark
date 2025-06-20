@@ -86,11 +86,21 @@ def load_clickhouse_data(data_type):
     for filename in os.listdir(results_dir):
         if filename.startswith("result_") and filename.endswith(".json"):
             file_path = os.path.join(results_dir, filename)
-            # Extract scale and hardware from filename, e.g., result_1b_2n_60c_240g_....json
-            parts = filename.replace("result_", "").split('_')
-            dataset_size = parts[0]
-            # Assuming hardware config is everything between the first and last two parts (date, time)
-            hardware_config_ch = "_" .join(parts[1:-2]) 
+            # Extract scale and hardware from filename
+            # New pattern: result_v25_4_1_1b_2n_30c_120g_20250620_151900.json
+            # Old pattern: result_1b_2n_60c_240g_....json
+            parts = filename.replace("result_", "").replace(".json", "").split('_')
+            
+            # Check if this is the new pattern (starts with version like v25_4_1)
+            if parts[0].startswith('v'):
+                # New pattern: skip version parts (v25, 4, 1) and get dataset size
+                dataset_size = parts[3]  # 1b is at index 3 after v25, 4, 1
+                # Hardware config starts after dataset size, ends before timestamp (last 2 parts)
+                hardware_config_ch = "_".join(parts[4:-2])
+            else:
+                # Old pattern: dataset size is first, hardware config follows
+                dataset_size = parts[0]
+                hardware_config_ch = "_".join(parts[1:-2])
             # Map to a more generic hardware label if needed, for now use raw
             # For ClickHouse, hardware might be like '2n_60c_240g'
 
