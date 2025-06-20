@@ -356,11 +356,9 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
             ax_chart.bar(positions, row.values, width=bar_width, label=config_name, color=color, edgecolor='white', linewidth=0.5) # Add subtle white edge to bars
 
     if horizontal_bars:
-        ax_chart.set_yticks(indices)
-        ax_chart.set_yticklabels(pivot_df.columns, color='white')
-        ax_chart.set_xlabel('Value (Seconds or Cost)', color='white')
         ax_chart.invert_yaxis() # To have Query 01 at the top
         ax_chart.grid(True, axis='x', linestyle='--', color='white', alpha=0.5) # Grid for horizontal bars
+        ax_chart.set_yticks([]) # Remove y-axis ticks
     else:
         ax_chart.set_xticks(indices)
         # Check if this is a per-query chart (not a total chart)
@@ -377,7 +375,6 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
             ax_chart.set_xticklabels(simplified_labels, color='white')  # No rotation for per-query charts
         else:
             ax_chart.set_xticklabels(pivot_df.columns, rotation=45, ha="right", color='white')  # Keep rotation for total charts
-        ax_chart.set_ylabel('Value (Seconds or Cost)', color='white')
         ax_chart.grid(True, axis='y', linestyle='--', color='white', alpha=0.5) # Grid for vertical bars
 
     # Tick parameter colors
