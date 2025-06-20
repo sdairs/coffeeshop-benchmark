@@ -1,5 +1,6 @@
 {
   "date": "2025-06-19",
+  "clickhouse_version": "25.4.1",
   "scale": "1b",
   "csp": "AWS",
   "region": "us-east-2",
