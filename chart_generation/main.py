@@ -572,7 +572,7 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
 
     plt.tight_layout(pad=1.0, h_pad=2.0) # Adjust overall layout
 
-    output_path = os.path.join(BASE_DATA_PATH, 'charts_output', f"{output_filename_base}.png")
+    output_path = os.path.join(BASE_DATA_PATH, 'charts', f"{output_filename_base}.png")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     plt.savefig(output_path, bbox_inches='tight')
     print(f"Chart saved to {output_path}")
