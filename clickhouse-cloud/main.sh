@@ -2,16 +2,6 @@
 
 set -euo pipefail
 
-SKIP_LOAD=true
-REPEATS=5
-
-# Internal variables
-CSP="AWS"
-REGION="us-east-2"
-TIER_SCALE_PRICE_PER_UNIT_PER_HR="0.2985"
-TIER_ENTERPRISE_PRICE_PER_UNIT_PER_HR="0.3903"
-DATE_TODAY=$(date +"%Y-%m-%d")
-TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 # Required environment variables
 : "${CLICKHOUSE_HOST:?CLICKHOUSE_HOST is required}"
@@ -19,36 +9,55 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 : "${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD is required}"
 
 # Usage check
-if [[ $# -lt 1 ]]; then
-    echo "Usage: $0 <SCALE> [NUM_NODES] [CPU_CORES_PER_NODE] [MEMORY_PER_NODE]"
+if [[ $# -ne 10 ]]; then
+    echo "Usage: $0 <SCALE> <SKIP_LOAD> <REPEATS> <NUM_NODES> <CPU_CORES_PER_NODE> <MEMORY_PER_NODE> <CSP> <REGION> <TIER_SCALE_PRICE> <TIER_ENTERPRISE_PRICE>"
     echo ""
-    echo "Available SCALE options:"
-    echo "  500m    Run benchmark on 500 million rows scale"
-    echo "  1b      Run benchmark on 1 billion rows scale"
-    echo "  5b      Run benchmark on 5 billion rows scale"
-    echo ""
-    echo "Optional:"
-    echo "  NUM_NODES "
-    echo "  CPU_CORES_PER_NODE "
-    echo "  MEMORY_PER_NODE "
+    echo "Required parameters:"
+    echo "  SCALE                             (500m | 1b | 5b)"
+    echo "  SKIP_LOAD                         (true | false)"
+    echo "  REPEATS                           (number of repetitions per query)"
+    echo "  NUM_NODES                         (e.g., 8)"
+    echo "  CPU_CORES_PER_NODE                (e.g., 60)"
+    echo "  MEMORY_PER_NODE                   (e.g., 240 for GiB)"
+    echo "  CSP                               (e.g., AWS, GCP)"
+    echo "  REGION                            (e.g., us-east-2)"
+    echo "  TIER_SCALE_PRICE_PER_UNIT_PER_HR (e.g., 0.2985)"
+    echo "  TIER_ENTERPRISE_PRICE_PER_UNIT_PER_HR (e.g., 0.3903)"
     exit 1
 fi
 
-# Input
+# Assign inputs
 SCALE="$1"
-DB_NAME="coffeeshop_${SCALE}"
+SKIP_LOAD="$2"
+REPEATS="$3"
+NUM_NODES="$4"
+CPU_CORES_PER_NODE="$5"
+MEMORY_PER_NODE="$6"
+CSP="$7"
+REGION="$8"
+TIER_SCALE_PRICE_PER_UNIT_PER_HR="$9"
+TIER_ENTERPRISE_PRICE_PER_UNIT_PER_HR="${10}"
 
-# Optional overrides via arguments
-NUM_NODES="${2:-8}"
-CPU_CORES_PER_NODE="${3:-60}"
-MEMORY_PER_NODE="${4:-240}"
-
-
+# Validate SCALE
 if [[ "$SCALE" != "500m" && "$SCALE" != "1b" && "$SCALE" != "5b" ]]; then
     echo "❌ Invalid SCALE: $SCALE"
     echo "Valid options are: 500m, 1b, 5b"
     exit 1
 fi
+
+# Validate SKIP_LOAD
+if [[ "$SKIP_LOAD" != "true" && "$SKIP_LOAD" != "false" ]]; then
+    echo "❌ Invalid SKIP_LOAD: $SKIP_LOAD"
+    echo "Valid options are: true, false"
+    exit 1
+fi
+
+
+# Internal variables
+DATE_TODAY=$(date +"%Y-%m-%d")
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+DB_NAME="coffeeshop_${SCALE}"
+
 
 
 
