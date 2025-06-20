@@ -372,12 +372,12 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
     ax_chart.tick_params(axis='y', colors='white')
 
     ax_chart.set_title(title, fontsize=16, color='white')
-    legend = ax_chart.legend(title='Configuration', bbox_to_anchor=(1.05, 1), loc='upper left')
-    legend.get_title().set_color('white')
-    for text in legend.get_texts():
-        text.set_color('white')
-    legend.get_frame().set_facecolor('#333333') # Darker background for legend box
-    legend.get_frame().set_edgecolor('white')
+    # legend = ax_chart.legend(title='Configuration', bbox_to_anchor=(1.05, 1), loc='upper left') # Legend removed
+    # legend.get_title().set_color('white')
+    # for text in legend.get_texts():
+    #     text.set_color('white')
+    # legend.get_frame().set_facecolor('#333333') # Darker background for legend box
+    # legend.get_frame().set_edgecolor('white')
 
     # --- Table creation (uses a new axis area) ---
     ax_table_area = fig.add_subplot(gs[1]) # Axis for the table
@@ -393,44 +393,78 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
     row_labels = pivot_df.index.tolist()
     col_labels = pivot_df.columns.tolist()
 
-    # Add a blank column header for the row labels column
-    table_col_labels_with_header = [''] + col_labels 
+    # Add column headers: one for color swatch (empty), one for row labels (empty), then data col_labels
+    table_col_labels_with_header = ['', ''] + col_labels
 
     the_table = Table(ax_table_area, bbox=[0, 0, 1, 1]) # Table fills its allocated subplot area
     the_table.auto_set_font_size(False)
     the_table.set_fontsize(9)
 
     num_table_rows = len(row_labels) + 1 # +1 for header
-    num_table_cols = len(table_col_labels_with_header)
+    # num_table_cols = len(table_col_labels_with_header) # Recalculate based on new structure
 
     cell_height = 1.0 / num_table_rows
-    # Define widths for columns - give more space to row labels if needed
-    # Example: first column (row labels) gets 20% of width, rest share remaining 80%
-    col_widths = [0.25] + [(0.75 / len(col_labels))] * len(col_labels) 
-    if not col_labels: # Handle case with no data columns (e.g. for total charts)
-        col_widths = [1.0]
+    
+    # Define widths for columns:
+    swatch_col_width = 0.04  # Narrow column for color swatch
+    label_name_col_width = 0.21 # Width for the hardware_config name
+    num_data_cols = len(col_labels)
+    
+    if num_data_cols > 0:
+        remaining_width_for_data = 1.0 - swatch_col_width - label_name_col_width
+        data_col_individual_width = remaining_width_for_data / num_data_cols
+        col_widths = [swatch_col_width, label_name_col_width] + [data_col_individual_width] * num_data_cols
+    elif num_data_cols == 0 and ('total query' in title.lower()): # Total charts have one data column conceptually, but pivot_df might be empty of data cols
+        # For 'Total' charts, the single value is effectively the data. The 'col_labels' might be ['Total_Cost'] or ['Total_Performance']
+        # If pivot_df.columns was used for col_labels, it might be 1. Let's assume it's 1 data column for totals.
+        remaining_width_for_data = 1.0 - swatch_col_width - label_name_col_width
+        # Ensure remaining_width_for_data is not negative if label_name_col_width is too large
+        data_col_individual_width = max(0, remaining_width_for_data) 
+        col_widths = [swatch_col_width, label_name_col_width, data_col_individual_width]
+    else: # No data columns at all, e.g. if something went wrong or no queries_to_plot
+        col_widths = [swatch_col_width, 1.0 - swatch_col_width] # Swatch and full width for label name
+
+    num_table_cols = len(col_widths) # Update based on actual col_widths array
 
     table_header_color = '#404040' # Dark grey for header background
     table_edge_color = '#666666' # Lighter grey for cell edges
     table_text_color = 'white'
 
     # Add header row
-    for j, label in enumerate(table_col_labels_with_header):
-        cell = the_table.add_cell(0, j, col_widths[j], cell_height, text=label, loc='center', 
-                                  facecolor=table_header_color, edgecolor=table_edge_color)
-        cell.get_text().set_color(table_text_color)
+    for j, label_text in enumerate(table_col_labels_with_header):
+        # Ensure we don't try to access col_widths[j] if j >= len(col_widths)
+        # This can happen if table_col_labels_with_header has more items than col_widths implies (e.g. for Total charts)
+        if j < len(col_widths):
+            width_for_cell = col_widths[j]
+            cell = the_table.add_cell(0, j, width_for_cell, cell_height, text=label_text, loc='center',
+                                      facecolor=table_header_color, edgecolor=table_edge_color)
+            cell.get_text().set_color(table_text_color)
+        # else: print(f"Warning: Skipping header cell for index {j} due to col_width mismatch.")
 
     # Add data rows
-    for i, row_label in enumerate(row_labels):
-        # Row headers (first column of data rows)
-        cell = the_table.add_cell(i + 1, 0, col_widths[0], cell_height, text=row_label, loc='left', 
-                                  facecolor=table_header_color, edgecolor=table_edge_color)
-        cell.get_text().set_color(table_text_color)
-        # Data cells
+    for i, row_label_text in enumerate(row_labels):
+        # Column 0: Color Swatch
+        swatch_color = config_colors.get(row_label_text, '#808080') # Get color from pre-calculated dict
+        cell_swatch = the_table.add_cell(i + 1, 0, col_widths[0], cell_height, text='', loc='center',
+                                         facecolor=swatch_color, edgecolor=table_edge_color)
+        # cell_swatch.get_text().set_color(table_text_color) # No text in swatch cell
+
+        # Column 1: Row Label Text (hardware_config name)
+        # Use the same background color as other headers for consistency, or a different one if preferred
+        cell_label_text = the_table.add_cell(i + 1, 1, col_widths[1], cell_height, text=row_label_text, loc='left',
+                                             facecolor=table_header_color, edgecolor=table_edge_color)
+        cell_label_text.get_text().set_color(table_text_color)
+        cell_label_text.PAD = 0.02 # Add a bit of padding to the left of the text
+
+        # Data cells (starting from column 2)
         for j, val in enumerate(table_data[i]):
-            cell = the_table.add_cell(i + 1, j + 1, col_widths[j+1], cell_height, text=str(val), loc='center', 
-                                      facecolor='#1C1C1A', edgecolor=table_edge_color) # Cell background same as chart
-            cell.get_text().set_color(table_text_color)
+            # Ensure we don't try to access col_widths[j+2] if it's out of bounds
+            if (j + 2) < len(col_widths):
+                width_for_data_cell = col_widths[j+2]
+                cell_data = the_table.add_cell(i + 1, j + 2, width_for_data_cell, cell_height, text=str(val), loc='center',
+                                                 facecolor='#1C1C1A', edgecolor=table_edge_color) # Cell background same as chart
+                cell_data.get_text().set_color(table_text_color)
+            # else: print(f"Warning: Skipping data cell for row {i}, col {j+2} due to col_width mismatch.")
     
     ax_table_area.add_table(the_table)
     # --- End of table creation changes ---
