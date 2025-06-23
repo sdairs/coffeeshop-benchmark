@@ -33,6 +33,13 @@ DATABASE_LABELS = {
 # Standardized query names (Q1 to Q17)
 QUERY_NAMES = [f"Query_{i:02d}" for i in range(1, 18)] # Query_01 to Query_17
 
+# Dataset size to row count mapping
+DATASET_ROWS = {
+    "500m": "721m",
+    "1b": "1.4b", 
+    "5b": "7.2b"
+}
+
 # ClickHouse data filtering configuration
 # We benchmarked a lot of instance types out of interest, but we don't want to produce too many bars or the charts are unreadable
 CLICKHOUSE_EXCLUDE_PATTERNS = [
@@ -311,8 +318,10 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
     # Remove vertical axis ticks for total charts only
     if config['is_total_chart']:
         ax_chart.set_yticks([])
+        # Add vertical grid lines for total charts
+        ax_chart.grid(True, axis='x', linestyle='--', color='white', alpha=0.3)
     else:
-        # For per-query charts, keep y-axis ticks and add grid lines
+        # For per-query charts, keep y-axis ticks and add horizontal grid lines
         ax_chart.tick_params(axis='y', colors='white')
         ax_chart.grid(True, axis='y', linestyle='--', color='white', alpha=0.3)
 
@@ -644,7 +653,7 @@ def main():
             print(f"No data or queries for perf chart (non Q10/16) for {ds_size}")
             continue
         generate_chart_and_table(df_filtered, 
-                                 title=f"Query Performance (excl. Q10, Q16) - {ds_size} (Seconds)", 
+                                 title=f"Seconds By Query (Except 10 & 16) - {ds_size} Orders - {DATASET_ROWS[ds_size]} Rows", 
                                  output_filename_base=f"perf_excl_q10_q16_{ds_size}",
                                  queries_to_plot=queries_group1_2,
                                  chart_type=ChartType.QUERY_PERFORMANCE)
@@ -658,7 +667,7 @@ def main():
             print(f"No data or queries for cost chart (non Q10/16) for {ds_size}")
             continue
         generate_chart_and_table(df_filtered, 
-                                 title=f"Query Cost (excl. Q10, Q16) - {ds_size} ($)", 
+                                 title=f"$ By Query (Except 10 & 16) - {ds_size} Orders - {DATASET_ROWS[ds_size]} Rows", 
                                  output_filename_base=f"cost_excl_q10_q16_{ds_size}",
                                  queries_to_plot=queries_group1_2,
                                  chart_type=ChartType.QUERY_COST)
@@ -671,7 +680,7 @@ def main():
             print(f"No data or queries for perf chart (Q10/16) for {ds_size}")
         else:
             generate_chart_and_table(df_filtered_perf, 
-                                     title=f"Query Performance (Q10, Q16) - {ds_size} (Seconds)", 
+                                     title=f"Seconds By Query (Queries 10 & 16) - {ds_size} Orders - {DATASET_ROWS[ds_size]} Rows", 
                                      output_filename_base=f"perf_q10_q16_{ds_size}",
                                      queries_to_plot=queries_group3,
                                      chart_type=ChartType.QUERY_PERFORMANCE)
@@ -681,7 +690,7 @@ def main():
             print(f"No data or queries for cost chart (Q10/16) for {ds_size}")
         else:
             generate_chart_and_table(df_filtered_cost, 
-                                     title=f"Query Cost (Q10, Q16) - {ds_size} ($)", 
+                                     title=f"$ By Query (Queries 10 & 16) - {ds_size} Orders - {DATASET_ROWS[ds_size]} Rows", 
                                      output_filename_base=f"cost_q10_q16_{ds_size}",
                                      queries_to_plot=queries_group3,
                                      chart_type=ChartType.QUERY_COST)
@@ -718,7 +727,7 @@ def main():
                     )
             
             generate_chart_and_table(df_filtered_perf_total,
-                                     title=f"Total Query Performance - {ds_size} (Seconds)",
+                                     title=f"Total Seconds - {ds_size} Orders - {DATASET_ROWS[ds_size]} Rows",
                                      output_filename_base=f"total_perf_{ds_size}",
                                      queries_to_plot=['Total_Performance'],
                                      chart_type=ChartType.TOTAL_PERFORMANCE,
@@ -758,7 +767,7 @@ def main():
                     )
             
             generate_chart_and_table(df_filtered_cost_total,
-                                     title=f"Total Query Cost - {ds_size} ($)",
+                                     title=f"Total $ - {ds_size} Orders - {DATASET_ROWS[ds_size]} Rows",
                                      output_filename_base=f"total_cost_{ds_size}",
                                      queries_to_plot=['Total_Cost'],
                                      chart_type=ChartType.TOTAL_COST,
