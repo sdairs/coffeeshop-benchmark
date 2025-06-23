@@ -20,7 +20,7 @@ The bucket is provided by [ClickHouse](https://clickhouse.com).
 
 ## Note on Snowflake & Databricks results
 
-These are the results from the original benchmark posted to LinkedIn by the original author (see [credits](#credits)). They have been extracted from the images and put into CSVs so we can replot them. See the original post for methodology on those results. Any differences between the original results and the results in this repository are human error when extracting (if you see something, please let me know so I can fix it).
+These are the results from the original benchmark posted to LinkedIn by the original author (see [credits](#credits)). They have been extracted from the images and put into files so we can replot them. See the original post for methodology on those results. Any differences between the original results and the results in this repository are human error when extracting (if you see something, please let me know so I can fix it).
 
 ## Credits
 
