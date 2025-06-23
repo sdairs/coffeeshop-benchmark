@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.table import Table
 import matplotlib.gridspec as gridspec
 import numpy as np
+from enum import Enum
 
 
 # Assuming the script is in a 'charts' directory and data is in sibling directories
@@ -31,6 +32,75 @@ DATABASE_LABELS = {
 
 # Standardized query names (Q1 to Q17)
 QUERY_NAMES = [f"Query_{i:02d}" for i in range(1, 18)] # Query_01 to Query_17
+
+# ClickHouse data filtering configuration
+# We benchmarked a lot of instance types out of interest, but we don't want to produce too many bars or the charts are unreadable
+CLICKHOUSE_EXCLUDE_PATTERNS = [
+    "60c",  # We dont need to include the 60 vCPU results as these instances were far larger than the sf/dbx
+]
+
+# Dataset-size-specific filtering for ClickHouse hardware configurations
+# The original benchmark scaled the hardware size with the workload and did not bench small instances on larger datasets / large instaces on smaller datasets
+CLICKHOUSE_DATASET_FILTERS = {
+    "500m": [
+        "16n",  # Exclude 16-node configs for 500m
+        "8n",   # Exclude 8-node configs for 500m
+    ],
+    "1b": [
+        "16n",  # Exclude 16-node configs for 1b
+        "8n",   # Exclude 8-node configs for 1b
+    ],
+    "5b": [
+        "2n",   # Exclude 2-node configs for 5b
+        "4n",   # Exclude 4-node configs for 5b
+    ]
+}
+
+class ChartType(Enum):
+    """Enum to define different chart types and their behaviors"""
+    QUERY_PERFORMANCE = "query_performance"
+    QUERY_COST = "query_cost"
+    TOTAL_PERFORMANCE = "total_performance"
+    TOTAL_COST = "total_cost"
+
+
+class ChartConfig:
+    """Configuration class to define chart behavior based on chart type"""
+    
+    @staticmethod
+    def get_config(chart_type: ChartType):
+        configs = {
+            ChartType.QUERY_PERFORMANCE: {
+                'is_total_chart': False,
+                'is_cost_chart': False,
+                'sort_ascending': True,
+                'show_secondary_values': False,
+                'currency_format': False
+            },
+            ChartType.QUERY_COST: {
+                'is_total_chart': False,
+                'is_cost_chart': True,
+                'sort_ascending': True,
+                'show_secondary_values': False,
+                'currency_format': True
+            },
+            ChartType.TOTAL_PERFORMANCE: {
+                'is_total_chart': True,
+                'is_cost_chart': False,
+                'sort_ascending': True,
+                'show_secondary_values': True,
+                'currency_format': False
+            },
+            ChartType.TOTAL_COST: {
+                'is_total_chart': True,
+                'is_cost_chart': True,
+                'sort_ascending': True,
+                'show_secondary_values': True,
+                'currency_format': True
+            }
+        }
+        return configs.get(chart_type, configs[ChartType.QUERY_PERFORMANCE])
+
 
 # --- Data Loading Functions ---
 
@@ -104,6 +174,17 @@ def load_clickhouse_data(data_type):
             # Map to a more generic hardware label if needed, for now use raw
             # For ClickHouse, hardware might be like '2n_60c_240g'
 
+            # Apply filtering configuration
+            if any(pattern in hardware_config_ch for pattern in CLICKHOUSE_EXCLUDE_PATTERNS):
+                print(f"Skipping ClickHouse file: {filename} due to excluded pattern in hardware config: {hardware_config_ch}")
+                continue
+
+            # Apply dataset-size-specific filtering
+            if dataset_size in CLICKHOUSE_DATASET_FILTERS:
+                if any(pattern in hardware_config_ch for pattern in CLICKHOUSE_DATASET_FILTERS[dataset_size]):
+                    print(f"Skipping ClickHouse file: {filename} due to dataset-size-specific exclusion in hardware config: {hardware_config_ch}")
+                    continue
+
             with open(file_path, 'r') as f:
                 data = json.load(f)
             
@@ -157,45 +238,10 @@ def load_clickhouse_data(data_type):
 
     return processed_data
 
-    """Darkens a given hex color by a factor using JCh color space for better perceptual results."""
-    if not isinstance(hex_color, str) or not hex_color.startswith('#') or len(hex_color) != 7:
-        # print(f"Invalid hex color format: {hex_color}, returning as is.")
-        return hex_color # Not a valid hex color string
-    try:
-        # Convert hex to RGB tuple (0-1 range)
-        rgb_color = tuple(int(hex_color.lstrip('#')[i:i+2], 16) / 255.0 for i in (0, 2, 4))
-        
-        # Convert RGB to JCh (luminance, chroma, hue)
-        jch_color = cspace_converter("sRGB1", "JCh")(rgb_color)
-        
-        # Reduce luminance (J)
-        new_j = jch_color[0] * factor
-        
-        # Prevent making colors too dark or black, ensure some minimum luminance
-        if jch_color[0] < 10 and factor < 1.0: # if original luminance is very low
-             new_j = max(2, jch_color[0] * 0.95) # Darken very slightly, min luminance 2
-        elif new_j < 5 and factor < 1.0: # Don't let it become black
-             new_j = 5 # Minimum luminance of 5
-        new_j = max(0, new_j) # Ensure J is not negative
-
-        jch_darkened_color = (new_j, jch_color[1], jch_color[2])
-        
-        # Convert back to RGB
-        rgb_darkened = cspace_converter("JCh", "sRGB1")(jch_darkened_color)
-        
-        # Clip values to [0, 1] and convert to hex string
-        hex_darkened = '#' + ''.join(f'{int(max(0, min(1, c)) * 255):02x}' for c in rgb_darkened)
-        return hex_darkened
-    except Exception as e:
-        # print(f"Error darkening color {hex_color} with factor {factor}: {e}") # Optional debug
-        return hex_color # Fallback to original color on error
-
-
-# --- Plotting Function (Placeholder) ---
-
-def generate_chart_and_table(df_filtered, title, output_filename_base, queries_to_plot, horizontal_bars=False):
+def generate_chart_and_table(df_filtered, title, output_filename_base, queries_to_plot, chart_type=ChartType.QUERY_PERFORMANCE, horizontal_bars=False):
     """Generates and saves a bar chart with a data table below it."""
     print(f"\n--- Generating chart: {title} ---")
+    print(f"Chart type: {chart_type.value}")
     print(f"Input df_filtered ({len(df_filtered)} records) head for '{title}':")
     if not df_filtered.empty:
         print(df_filtered.head().to_string())
@@ -208,6 +254,9 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
     else:
         print("Input df_filtered is EMPTY.")
     print("--- End of input data for chart --- \n")
+
+    # Get chart configuration
+    config = ChartConfig.get_config(chart_type)
 
     # Original print for the function start
     # print(f"\nGenerating chart: {title}") # This can be removed or kept as is
@@ -224,10 +273,10 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
     pivot_df = df_filtered.pivot_table(index='hardware_config', columns='query_name', values='value')
     pivot_df = pivot_df[queries_to_plot] # Ensure correct query order and selection
 
-    # For 'Total' charts, sort by value (best to worst, so ascending)
-    if ('total query performance' in title.lower() or 'total query cost' in title.lower()) and not pivot_df.empty and len(pivot_df.columns) == 1:
-        # Sort by the single column of values, ascending (lowest is best)
-        pivot_df = pivot_df.sort_values(by=pivot_df.columns[0], ascending=True)
+    # For 'Total' charts, sort by value (best to worst, so ascending for data but descending for display)
+    if config['is_total_chart'] and not pivot_df.empty and len(pivot_df.columns) == 1:
+        # Sort by the single column of values, descending so best (lowest) values appear at top of horizontal bars
+        pivot_df = pivot_df.sort_values(by=pivot_df.columns[0], ascending=False)
     
     # Sort hardware_config for consistent plotting order if desired (e.g., by a predefined list or name)
     # For now, default pandas sort is used for non-total charts or if sorting by value isn't applicable.
@@ -239,18 +288,33 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
         print(f"Skipping chart '{title}' due to no data after pivoting.")
         return
 
-    fig = plt.figure(figsize=(max(15, num_queries * 1.5), 10)) # Increased height for table
+    fig = plt.figure(figsize=(max(15, num_queries * 1.5), 12)) # Increased height for better spacing
     fig.patch.set_facecolor('#1C1C1A') # Set figure background
 
-    gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1], hspace=0.15) # 2 rows, 1 col; chart gets 3 parts, table 1 part. hspace adds space.
-    ax_chart = fig.add_subplot(gs[0]) # Axis for the bar chart
+    # Use different layouts for total vs non-total charts
+    if config['is_total_chart']:
+        # Single subplot for total charts (no table)
+        ax_chart = fig.add_subplot(1, 1, 1)
+    else:
+        # Two subplots for non-total charts (chart + table)
+        gs = gridspec.GridSpec(2, 1, height_ratios=[2.5, 1], hspace=0.1) # Increased spacing between chart and table
+        ax_chart = fig.add_subplot(gs[0]) # Axis for the bar chart
+    
     ax_chart.set_facecolor('#1C1C1A') # Set chart area background
 
-    # Set spine colors to white
+    # Set spine colors and visibility - only show bottom spine
     ax_chart.spines['bottom'].set_color('white')
-    ax_chart.spines['top'].set_color('white') 
-    ax_chart.spines['right'].set_color('white')
-    ax_chart.spines['left'].set_color('white')
+    ax_chart.spines['top'].set_visible(False)
+    ax_chart.spines['right'].set_visible(False)
+    ax_chart.spines['left'].set_visible(False)
+
+    # Remove vertical axis ticks for total charts only
+    if config['is_total_chart']:
+        ax_chart.set_yticks([])
+    else:
+        # For per-query charts, keep y-axis ticks and add grid lines
+        ax_chart.tick_params(axis='y', colors='white')
+        ax_chart.grid(True, axis='y', linestyle='--', color='white', alpha=0.3)
 
     # Bar chart
     bar_width = 0.8 / num_configs # Adjust bar width based on number of configs
@@ -286,173 +350,114 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
         color_list_for_db = DATABASE_COLORS.get(current_db_base)
 
         if isinstance(color_list_for_db, list) and color_list_for_db: # Check if it's a non-empty list
-            # Cycle through the predefined colors if there are more configs than colors
-            final_color_for_cfg = color_list_for_db[count % len(color_list_for_db)]
-        elif isinstance(color_list_for_db, str): # Fallback if a single color string is still defined for some reason
-            final_color_for_cfg = color_list_for_db 
-        else: # Ultimate fallback to grey if no valid color/list found
-            final_color_for_cfg = '#808080' 
-
-        config_colors[config_name_in_pivot] = final_color_for_cfg
-        db_config_counts[current_db_base] = count + 1
-
-        # Debug print for color assignment (BaseColor concept changes here)
-        print(f"  ColorDebug: Config='{config_name_in_pivot}', DB_Base='{current_db_base}', ColorIndex={count}, FinalColor='{final_color_for_cfg}'")
-    # --- End of color variation logic ---
-
-    # Iterate through the original pivot_df index order for plotting to maintain user's expected bar order
-    for i, (config_name, row) in enumerate(pivot_df.iterrows()):
-        color = config_colors.get(config_name, '#808080') # Get pre-calculated color
-        
-        position_offset = (i - num_configs / 2 + 0.5) * bar_width
-        positions = indices + position_offset
-
-        if horizontal_bars:
-            # For horizontal bars, 'indices' are y-coordinates, 'row.values' are widths
-            bars = ax_chart.barh(positions, row.values, height=bar_width, label=config_name, color=color, align='center', edgecolor='white', linewidth=0.5) # Add subtle white edge to bars
-
-            # Add hardware configuration name inside the bar for total charts
-            if 'total query' in title.lower():
-                bar_value = row.values[0]
-                y_bar_center = positions[0]
-                
-                # Position the hardware name at the left side of the bar with some padding
-                current_xlim = ax_chart.get_xlim()
-                plot_data_range = current_xlim[1] - current_xlim[0]
-                padding_abs = plot_data_range * 0.01  # Small padding from the left edge
-                
-                # Place hardware name at the left side of the bar
-                hardware_name_x = padding_abs
-                ax_chart.text(hardware_name_x, y_bar_center, config_name,
-                              va='center', ha='left', color='black', fontsize=10, weight='bold')
-
-            # Add performance labels if this is a Total Cost chart and data is available
-            if horizontal_bars and 'total_perf_value' in df_filtered.columns and 'total query cost' in title.lower():
-                cost_value = row.values[0] # This is the bar's width (the cost)
-                y_bar_center = positions[0]    # This is the y-coordinate of the bar's center
-
-                # Retrieve the performance value for this specific config_name from the original df_filtered
-                perf_series = df_filtered.loc[df_filtered['hardware_config'] == config_name, 'total_perf_value']
-                
-                if not perf_series.empty and pd.notna(perf_series.iloc[0]):
-                    perf_value = perf_series.iloc[0]
-                    label_text = f"(time: {perf_value:.1f}s)" # Format as, e.g., "(time: 123.4s)"
-                    
-                    # Determine text position and alignment dynamically
-                    current_xlim = ax_chart.get_xlim() # xmin, xmax for data
-                    plot_data_range = current_xlim[1] - current_xlim[0]
-                    if plot_data_range == 0: # Avoid division by zero if range is zero
-                        plot_data_range = 1 # Default to 1 to prevent errors, though unlikely for a bar chart
-                    
-                    padding_abs = plot_data_range * 0.015 # 1.5% of range as padding, slightly more than before
-
-                    # Threshold for placing text inside: if bar is longer than 85% of x-axis max value
-                    threshold_for_inside = current_xlim[1] * 0.85
-
-                    text_x = 0
-                    ha = 'left' # Default horizontal alignment
-
-                    if cost_value > threshold_for_inside:
-                        # Bar is long, place text inside, to the left of the bar's end
-                        text_x = cost_value - padding_abs
-                        ha = 'right'
-                    else:
-                        # Bar is not "too long", place text outside, to the right of the bar's end
-                        text_x = cost_value + padding_abs
-                        ha = 'left'
-
-                    if cost_value == 0:
-                        text_x = padding_abs # Place at padding distance from origin
-                        ha = 'left'
-                    elif cost_value < padding_abs and ha == 'right': 
-                        # If bar is extremely short AND logic decided to place inside (unlikely with threshold_for_inside)
-                        # revert to placing outside to avoid text appearing left of y-axis or cramped.
-                        text_x = cost_value + padding_abs
-                        ha = 'left'
-                    
-                    text_label_color = 'white' # Default to white
-                    if ha == 'right': # Text is inside the bar
-                        text_label_color = 'black' # Use black for better contrast inside light bars
-                    
-                    ax_chart.text(text_x, y_bar_center, label_text,
-                                  va='center', ha=ha, color=text_label_color, fontsize=8)
-                    
-                    # Add value label to the right of the bar
-                    value_text = f"${cost_value:.2f}" 
-                    value_x = cost_value + padding_abs * 2  # Place further to the right
-                    ax_chart.text(value_x, y_bar_center, value_text,
-                                  va='center', ha='left', color='white', fontsize=9, weight='bold')
-            
-            # Add cost labels if this is a Total Performance chart and cost data is available
-            elif horizontal_bars and 'total_cost_value' in df_filtered.columns and 'total query performance' in title.lower():
-                perf_value = row.values[0] # This is the bar's width (the performance time)
-                y_bar_center = positions[0]    # This is the y-coordinate of the bar's center
-
-                # Check if we have cost data available in the dataframe
-                cost_series = df_filtered.loc[df_filtered['hardware_config'] == config_name, 'total_cost_value']
-                
-                if not cost_series.empty and pd.notna(cost_series.iloc[0]):
-                    cost_value = cost_series.iloc[0]
-                    label_text = f"(cost: ${cost_value:.2f})" # Format as, e.g., "(cost: $1.23)"
-                    
-                    # Use similar positioning logic as for cost charts
-                    current_xlim = ax_chart.get_xlim()
-                    plot_data_range = current_xlim[1] - current_xlim[0]
-                    if plot_data_range == 0:
-                        plot_data_range = 1
-                        
-                    padding_abs = plot_data_range * 0.015
-                    threshold_for_inside = current_xlim[1] * 0.85
-
-                    text_x = 0
-                    ha = 'left'
-
-                    if perf_value > threshold_for_inside:
-                        text_x = perf_value - padding_abs
-                        ha = 'right'
-                    else:
-                        text_x = perf_value + padding_abs
-                        ha = 'left'
-
-                    if perf_value == 0:
-                        text_x = padding_abs
-                        ha = 'left'
-                    elif perf_value < padding_abs and ha == 'right':
-                        text_x = perf_value + padding_abs
-                        ha = 'left'
-                    
-                    text_label_color = 'white'
-                    if ha == 'right':
-                        text_label_color = 'black'
-                    
-                    ax_chart.text(text_x, y_bar_center, label_text,
-                                  va='center', ha=ha, color=text_label_color, fontsize=8)
-                    
-                    # Add value label to the right of the bar
-                    value_text = f"{perf_value:.1f}s"
-                    value_x = perf_value + padding_abs * 2  # Place further to the right
-                    ax_chart.text(value_x, y_bar_center, value_text,
-                                  va='center', ha='left', color='white', fontsize=9, weight='bold')
+            # Cycle through the predefined colors for this database
+            color_index = count % len(color_list_for_db)
+            config_colors[config_name_in_pivot] = color_list_for_db[color_index]
+            db_config_counts[current_db_base] = count + 1
         else:
-            ax_chart.bar(positions, row.values, width=bar_width, label=config_name, color=color, edgecolor='white', linewidth=0.5) # Add subtle white edge to bars
+            # Fallback color if no predefined colors are available
+            config_colors[config_name_in_pivot] = '#CCCCCC'
 
-    if horizontal_bars:
-        # Add padding to the right side for total charts to accommodate value labels
-        current_xlim = ax_chart.get_xlim()
-        max_bar_value = pivot_df.values.max()  # Get the maximum value from all bars
-        padding_extension = max_bar_value * 0.15  # Add 15% padding to the right
-        ax_chart.set_xlim(current_xlim[0], max_bar_value + padding_extension)
+    # Plot bars for each hardware config
+    for i, config_name in enumerate(pivot_df.index):
+        values = pivot_df.loc[config_name].values
+        positions = indices + i * bar_width
+        color = config_colors.get(config_name, '#CCCCCC')
         
-        ax_chart.invert_yaxis() # To have Query 01 at the top
-        ax_chart.grid(True, axis='x', linestyle='--', color='white', alpha=0.5) # Grid for horizontal bars
-        ax_chart.set_yticks([]) # Remove y-axis ticks
+        if horizontal_bars:
+            bars = ax_chart.barh(positions, values, bar_width, label=config_name, color=color)
+        else:
+            bars = ax_chart.bar(positions, values, bar_width, label=config_name, color=color)
+
+        # Add value labels on bars for total charts
+        if config['is_total_chart']:
+            for j, (bar, value) in enumerate(zip(bars, values)):
+                if pd.notna(value):
+                    if horizontal_bars:
+                        # For horizontal bars, text goes to the right of the bar with fixed padding
+                        x_pos = bar.get_width()  # Fixed padding for all bars
+                        y_pos = bar.get_y() + bar.get_height() / 2
+                        
+                        # Add hardware config label to the left of the bar
+                        label_x_pos = -max(values) * 0.02  # Position to the left of the chart area
+                        ax_chart.text(label_x_pos, y_pos, config_name, 
+                                    ha='right', va='center', fontsize=10, color='white', weight='bold')
+                        
+                        # Show secondary values if available and configured
+                        if config['show_secondary_values'] and 'total_cost_value' in df_filtered.columns and chart_type == ChartType.TOTAL_PERFORMANCE:
+                            # Show cost value for performance charts
+                            cost_row = df_filtered[df_filtered['hardware_config'] == config_name]
+                            if not cost_row.empty and 'total_cost_value' in cost_row.columns:
+                                cost_value = cost_row['total_cost_value'].iloc[0]
+                                if pd.notna(cost_value):
+                                    ax_chart.text(x_pos, y_pos, f'{value:.3f}s\n(${cost_value:.3f})', 
+                                                ha='left', va='center', fontsize=9, color='white', weight='bold')
+                                else:
+                                    ax_chart.text(x_pos, y_pos, f'{value:.3f}s', 
+                                                ha='left', va='center', fontsize=9, color='white', weight='bold')
+                            else:
+                                ax_chart.text(x_pos, y_pos, f'{value:.3f}s', 
+                                            ha='left', va='center', fontsize=9, color='white', weight='bold')
+                        elif config['show_secondary_values'] and 'total_perf_value' in df_filtered.columns and chart_type == ChartType.TOTAL_COST:
+                            # Show performance value for cost charts
+                            perf_row = df_filtered[df_filtered['hardware_config'] == config_name]
+                            if not perf_row.empty and 'total_perf_value' in perf_row.columns:
+                                perf_value = perf_row['total_perf_value'].iloc[0]
+                                if pd.notna(perf_value):
+                                    ax_chart.text(x_pos, y_pos, f'${value:.3f}\n({perf_value:.3f}s)', 
+                                                ha='left', va='center', fontsize=9, color='white', weight='bold')
+                                else:
+                                    ax_chart.text(x_pos, y_pos, f'${value:.3f}', 
+                                                ha='left', va='center', fontsize=9, color='white', weight='bold')
+                            else:
+                                ax_chart.text(x_pos, y_pos, f'${value:.3f}', 
+                                            ha='left', va='center', fontsize=9, color='white', weight='bold')
+                        else:
+                            # Standard value display
+                            if config['currency_format']:
+                                ax_chart.text(x_pos, y_pos, f'${value:.3f}', 
+                                            ha='left', va='center', fontsize=9, color='white', weight='bold')
+                            else:
+                                ax_chart.text(x_pos, y_pos, f'{value:.3f}s', 
+                                            ha='left', va='center', fontsize=9, color='white', weight='bold')
+                    else:
+                        # For vertical bars, text goes above the bar
+                        x_pos = bar.get_x() + bar.get_width() / 2
+                        y_pos = bar.get_height() + max(values) * 0.01
+                        
+                        if config['currency_format']:
+                            ax_chart.text(x_pos, y_pos, f'${value:.3f}', 
+                                        ha='center', va='bottom', fontsize=9, color='white', weight='bold')
+                        else:
+                            ax_chart.text(x_pos, y_pos, f'{value:.3f}s', 
+                                        ha='center', va='bottom', fontsize=9, color='white', weight='bold')
+
+    # Chart formatting
+    if horizontal_bars:
+        # Remove y-tick labels since we removed y-ticks entirely
+        
+        # Adjust x-axis limits for total charts to make room for labels on the left
+        if config['is_total_chart']:
+            current_xlim = ax_chart.get_xlim()
+            max_bar_value = pivot_df.values.max() if not pivot_df.empty else 1
+            # Extend left side for labels and right side for value labels
+            # ax_chart.set_xlim(-max_bar_value * 0.15, max_bar_value * 1.15)
+            
+            # Hide negative x-axis ticks - only show ticks from 0 onwards
+            # current_ticks = ax_chart.get_xticks()
+            # positive_ticks = [tick for tick in current_ticks if tick >= 0]
+            # ax_chart.set_xticks(positive_ticks)
+            
+            # Shorten bottom spine to start at x=0 instead of extending to the left
+            ax_chart.spines['bottom'].set_bounds(0, max_bar_value * 1.15)
     else:
-        ax_chart.set_xticks(indices)
-        # Check if this is a per-query chart (not a total chart)
-        if not ('total query performance' in title.lower() or 'total query cost' in title.lower()):
+        ax_chart.set_xticks(indices + bar_width * (num_configs - 1) / 2)
+        
+        # Transform query labels for per-query charts (not total charts)
+        if not config['is_total_chart']:
             # Transform Query_02 format to Q2 format for per-query charts
             simplified_labels = []
-            for label in pivot_df.columns:
+            for label in queries_to_plot:
                 if label.startswith('Query_'):
                     # Extract the number part and convert Query_02 to Q2
                     query_num = label.replace('Query_', '')
@@ -461,132 +466,99 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
                     simplified_labels.append(label)
             ax_chart.set_xticklabels(simplified_labels, color='white')  # No rotation for per-query charts
         else:
-            ax_chart.set_xticklabels(pivot_df.columns, rotation=45, ha="right", color='white')  # Keep rotation for total charts
-        ax_chart.grid(True, axis='y', linestyle='--', color='white', alpha=0.5) # Grid for vertical bars
+            # Keep original labels and rotation for total charts
+            ax_chart.set_xticklabels(queries_to_plot, rotation=45, ha='right', color='white')
+            
+    ax_chart.set_title(title, color='white', fontsize=16, weight='bold')
+    ax_chart.tick_params(colors='white')
 
-    # Tick parameter colors
-    ax_chart.tick_params(axis='x', colors='white')
-    ax_chart.tick_params(axis='y', colors='white')
+    # Reduce gap between bars and bottom axis
+    ax_chart.margins(y=0.01)
 
-    ax_chart.set_title(title, fontsize=16, color='white')
-    # legend = ax_chart.legend(title='Configuration', bbox_to_anchor=(1.05, 1), loc='upper left') # Legend removed
-    # legend.get_title().set_color('white')
-    # for text in legend.get_texts():
-    #     text.set_color('white')
-    # legend.get_frame().set_facecolor('#333333') # Darker background for legend box
-    # legend.get_frame().set_edgecolor('white')
+    # Data table - only for non-total charts
+    if not config['is_total_chart']:
+        ax_table = fig.add_subplot(gs[1])
+        ax_table.axis('off')
 
-    # --- Table creation (uses a new axis area) ---
-    ax_table_area = fig.add_subplot(gs[1]) # Axis for the table
-    ax_table_area.axis('off') # No visible axis for the table area
-    ax_table_area.set_facecolor('#1C1C1A') # Ensure table area background is also dark
+        # Create table data
+        def format_number(value):
+            """Format numbers based on chart type"""
+            if pd.isna(value):
+                return 'N/A'
+            if config['currency_format']:
+                return f'${value:.3f}'
+            else:
+                return f'{value:.3f}'
 
-    # Format table data to show up to 3 decimal places with trailing zeros for consistency
-    def format_number(value):
-        if pd.isna(value):
-            return 'N/A'
-        try:
-            # Format to exactly 3 decimal places with trailing zeros for consistency
-            formatted = f"{float(value):.3f}"
-            # Add dollar sign prefix for cost charts
-            if 'cost' in title.lower():
-                formatted = f"${formatted}"
-            return formatted
-        except (ValueError, TypeError):
-            return str(value)
-    
-    # Apply formatting to all numeric values in the pivot table
-    table_data = []
-    for row in pivot_df.values:
-        formatted_row = [format_number(val) for val in row]
-        table_data.append(formatted_row)
-    
-    row_labels = pivot_df.index.tolist()
-    col_labels = pivot_df.columns.tolist()
+        # Prepare table data
+        table_data = []
+        headers = ['Color', 'Hardware Config'] + list(pivot_df.columns)
+        
+        for config_name in pivot_df.index:
+            row = ['', config_name]  # Empty string for color swatch, will be filled with color
+            for query in pivot_df.columns:
+                value = pivot_df.loc[config_name, query]
+                row.append(format_number(value))
+            table_data.append(row)
 
-    # Add column headers: one for color swatch (empty), one for row labels (empty), then data col_labels
-    table_col_labels_with_header = ['', ''] + col_labels
+        # Create table
+        if table_data:
+            table = ax_table.table(cellText=table_data, colLabels=headers, 
+                                  cellLoc='center', loc='center',
+                                  colColours=['#333333'] * len(headers))
+            table.auto_set_font_size(False)
+            table.set_fontsize(9)  # Slightly smaller font
+            table.scale(1, 1.5)    # Reduced vertical scaling
+            
+            # Adjust column widths - make Hardware Config column wider
+            num_data_cols = len(pivot_df.columns)
+            color_col_width = 0.08  # Color swatch column
+            config_col_width = 0.11  # Hardware Config column (slightly wider than default)
+            remaining_width = 1.0 - color_col_width - config_col_width
+            data_col_width = remaining_width / num_data_cols if num_data_cols > 0 else 0.1
+            
+            # Set column widths
+            for j in range(len(headers)):
+                if j == 0:  # Color column
+                    width = color_col_width
+                elif j == 1:  # Hardware Config column
+                    width = config_col_width
+                else:  # Data columns
+                    width = data_col_width
+                
+                # Apply width to all cells in this column
+                for i in range(len(table_data) + 1):  # +1 for header row
+                    if (i, j) in table.get_celld():
+                        table.get_celld()[(i, j)].set_width(width)
+            
+            # Style the table
+            for (i, j), cell in table.get_celld().items():
+                if i == 0:  # Header row
+                    cell.set_text_props(weight='bold', color='white')
+                    cell.set_facecolor('#555555')
+                else:
+                    cell.set_text_props(color='white')
+                    if j == 0:  # Color column - use the hardware config's color
+                        config_name = pivot_df.index[i-1]  # i-1 because header is row 0
+                        color = config_colors.get(config_name, '#CCCCCC')
+                        cell.set_facecolor(color)
+                        cell.set_text_props(color=color)  # Hide text by making it same color as background
+                    else:
+                        cell.set_facecolor('#2A2A2A')
+                cell.set_edgecolor('white')
+        elif len(pivot_df.columns) == 0:
+            ax_table.text(0.5, 0.5, 'No data available for table', 
+                         ha='center', va='center', transform=ax_table.transAxes, 
+                         color='white', fontsize=12)
 
-    the_table = Table(ax_table_area, bbox=[0, 0, 1, 1]) # Table fills its allocated subplot area
-    the_table.auto_set_font_size(False)
-    the_table.set_fontsize(9)
-
-    num_table_rows = len(row_labels) + 1 # +1 for header
-    # num_table_cols = len(table_col_labels_with_header) # Recalculate based on new structure
-
-    cell_height = 1.0 / num_table_rows
-    
-    # Define widths for columns:
-    swatch_col_width = 0.04  # Narrow column for color swatch
-    label_name_col_width = 0.21 # Width for the hardware_config name
-    num_data_cols = len(col_labels)
-    
-    if num_data_cols > 0:
-        remaining_width_for_data = 1.0 - swatch_col_width - label_name_col_width
-        data_col_individual_width = remaining_width_for_data / num_data_cols
-        col_widths = [swatch_col_width, label_name_col_width] + [data_col_individual_width] * num_data_cols
-    elif num_data_cols == 0 and ('total query' in title.lower()): # Total charts have one data column conceptually, but pivot_df might be empty of data cols
-        # For 'Total' charts, the single value is effectively the data. The 'col_labels' might be ['Total_Cost'] or ['Total_Performance']
-        # If pivot_df.columns was used for col_labels, it might be 1. Let's assume it's 1 data column for totals.
-        remaining_width_for_data = 1.0 - swatch_col_width - label_name_col_width
-        # Ensure remaining_width_for_data is not negative if label_name_col_width is too large
-        data_col_individual_width = max(0, remaining_width_for_data) 
-        col_widths = [swatch_col_width, label_name_col_width, data_col_individual_width]
-    else: # No data columns at all, e.g. if something went wrong or no queries_to_plot
-        col_widths = [swatch_col_width, 1.0 - swatch_col_width] # Swatch and full width for label name
-
-    num_table_cols = len(col_widths) # Update based on actual col_widths array
-
-    table_header_color = '#404040' # Dark grey for header background
-    table_edge_color = '#666666' # Lighter grey for cell edges
-    table_text_color = 'white'
-
-    # Add header row
-    for j, label_text in enumerate(table_col_labels_with_header):
-        # Ensure we don't try to access col_widths[j] if j >= len(col_widths)
-        # This can happen if table_col_labels_with_header has more items than col_widths implies (e.g. for Total charts)
-        if j < len(col_widths):
-            width_for_cell = col_widths[j]
-            cell = the_table.add_cell(0, j, width_for_cell, cell_height, text=label_text, loc='center',
-                                      facecolor=table_header_color, edgecolor=table_edge_color)
-            cell.get_text().set_color(table_text_color)
-        # else: print(f"Warning: Skipping header cell for index {j} due to col_width mismatch.")
-
-    # Add data rows
-    for i, row_label_text in enumerate(row_labels):
-        # Column 0: Color Swatch
-        swatch_color = config_colors.get(row_label_text, '#808080') # Get color from pre-calculated dict
-        cell_swatch = the_table.add_cell(i + 1, 0, col_widths[0], cell_height, text='', loc='center',
-                                         facecolor=swatch_color, edgecolor=table_edge_color)
-        # cell_swatch.get_text().set_color(table_text_color) # No text in swatch cell
-
-        # Column 1: Row Label Text (hardware_config name)
-        # Use the same background color as other headers for consistency, or a different one if preferred
-        cell_label_text = the_table.add_cell(i + 1, 1, col_widths[1], cell_height, text=row_label_text, loc='left',
-                                             facecolor=table_header_color, edgecolor=table_edge_color)
-        cell_label_text.get_text().set_color(table_text_color)
-        cell_label_text.PAD = 0.02 # Add a bit of padding to the left of the text
-
-        # Data cells (starting from column 2)
-        for j, val in enumerate(table_data[i]):
-            # Ensure we don't try to access col_widths[j+2] if it's out of bounds
-            if (j + 2) < len(col_widths):
-                width_for_data_cell = col_widths[j+2]
-                cell_data = the_table.add_cell(i + 1, j + 2, width_for_data_cell, cell_height, text=str(val), loc='center',
-                                                 facecolor='#1C1C1A', edgecolor=table_edge_color) # Cell background same as chart
-                cell_data.get_text().set_color(table_text_color)
-            # else: print(f"Warning: Skipping data cell for row {i}, col {j+2} due to col_width mismatch.")
-    
-    ax_table_area.add_table(the_table)
-    # --- End of table creation changes ---
-
-    plt.tight_layout(pad=1.0, h_pad=2.0) # Adjust overall layout
-
+    # Save the chart
+    # output_path = f"{output_filename_base}.png"
     output_path = os.path.join(BASE_DATA_PATH, 'charts', f"{output_filename_base}.png")
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    plt.savefig(output_path, bbox_inches='tight')
-    print(f"Chart saved to {output_path}")
-    plt.close(fig)
+    plt.subplots_adjust(hspace=0.2)  # Adjust spacing instead of tight_layout
+    plt.savefig(output_path, facecolor='#1C1C1A', dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Chart saved: {output_path}")
+
 
 # --- Main Orchestration --- 
 
@@ -674,7 +646,8 @@ def main():
         generate_chart_and_table(df_filtered, 
                                  title=f"Query Performance (excl. Q10, Q16) - {ds_size} (Seconds)", 
                                  output_filename_base=f"perf_excl_q10_q16_{ds_size}",
-                                 queries_to_plot=queries_group1_2)
+                                 queries_to_plot=queries_group1_2,
+                                 chart_type=ChartType.QUERY_PERFORMANCE)
 
     # 2. Query cost (except Q10, Q16)
     for ds_size in dataset_sizes:
@@ -687,7 +660,8 @@ def main():
         generate_chart_and_table(df_filtered, 
                                  title=f"Query Cost (excl. Q10, Q16) - {ds_size} ($)", 
                                  output_filename_base=f"cost_excl_q10_q16_{ds_size}",
-                                 queries_to_plot=queries_group1_2)
+                                 queries_to_plot=queries_group1_2,
+                                 chart_type=ChartType.QUERY_COST)
 
     # 3. Query performance & cost for Q10, Q16
     for ds_size in dataset_sizes:
@@ -699,7 +673,8 @@ def main():
             generate_chart_and_table(df_filtered_perf, 
                                      title=f"Query Performance (Q10, Q16) - {ds_size} (Seconds)", 
                                      output_filename_base=f"perf_q10_q16_{ds_size}",
-                                     queries_to_plot=queries_group3)
+                                     queries_to_plot=queries_group3,
+                                     chart_type=ChartType.QUERY_PERFORMANCE)
         # Cost for Q10, Q16
         df_filtered_cost = df_cost[df_cost['dataset_size'] == ds_size]
         if not queries_group3 or df_filtered_cost.empty:
@@ -708,7 +683,8 @@ def main():
             generate_chart_and_table(df_filtered_cost, 
                                      title=f"Query Cost (Q10, Q16) - {ds_size} ($)", 
                                      output_filename_base=f"cost_q10_q16_{ds_size}",
-                                     queries_to_plot=queries_group3)
+                                     queries_to_plot=queries_group3,
+                                     chart_type=ChartType.QUERY_COST)
 
     # 4. Total performance (sum of all queries)
     df_total_perf_data_for_labels = None # Initialize to store perf data for labels
@@ -745,6 +721,7 @@ def main():
                                      title=f"Total Query Performance - {ds_size} (Seconds)",
                                      output_filename_base=f"total_perf_{ds_size}",
                                      queries_to_plot=['Total_Performance'],
+                                     chart_type=ChartType.TOTAL_PERFORMANCE,
                                      horizontal_bars=True)
     else:
         print("Skipping total performance charts due to no performance data or no queries identified.")
@@ -784,6 +761,7 @@ def main():
                                      title=f"Total Query Cost - {ds_size} ($)",
                                      output_filename_base=f"total_cost_{ds_size}",
                                      queries_to_plot=['Total_Cost'],
+                                     chart_type=ChartType.TOTAL_COST,
                                      horizontal_bars=True)
     else:
         print("Skipping total cost charts due to no cost data or no queries identified.")
