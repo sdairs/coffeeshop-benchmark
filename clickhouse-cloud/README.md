@@ -25,7 +25,29 @@ Go to [ClickHouse Cloud](https://clickhouse.com/cloud), provision a service, and
 
 > Make sure your service size matches what you plan to benchmark.
 
-### 2. Export required environment variables
+### 2. Prepare a machine to run the benchmark
+
+You need a machine (local or cloud VM) to run the benchmark scripts. This machine must:
+
+- Have **network access** to the ClickHouse Cloud service
+- Have **network access** to the following **public S3 buckets**:
+```
+s3://clickhouse-datasets/coffeeshop/dim_locations
+s3://clickhouse-datasets/coffeeshop/dim_products
+s3://clickhouse-datasets/coffeeshop/fact_sales_500m
+s3://clickhouse-datasets/coffeeshop/fact_sales_1b
+s3://clickhouse-datasets/coffeeshop/fact_sales_5b
+```
+
+### 3. Install `clickhouse-client`
+
+Make sure the machine has `clickhouse-client` installed. You can install it with the official quick-install script:
+
+```bash
+curl https://clickhouse.com/ | sh
+```
+
+### 4. Export required environment variables
 
 These are used by all scripts to connect to your service:
 
