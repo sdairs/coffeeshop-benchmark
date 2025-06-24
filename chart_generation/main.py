@@ -51,19 +51,37 @@ CLICKHOUSE_EXCLUDE_PATTERNS = [
 # Dataset-size-specific filtering for ClickHouse hardware configurations
 # The original benchmark scaled the hardware size with the workload and did not bench small instances on larger datasets / large instaces on smaller datasets
 CLICKHOUSE_DATASET_FILTERS = {
-    "500m": [
-        "16n",  # Exclude 16-node configs for 500m
-        "8n",   # Exclude 8-node configs for 500m
-    ],
-    "1b": [
-        "16n",  # Exclude 16-node configs for 1b
-        "8n",   # Exclude 8-node configs for 1b
-    ],
-    "5b": [
-        "2n",   # Exclude 2-node configs for 5b
-        "4n",   # Exclude 4-node configs for 5b
-    ]
+    "500m": {
+        "non-tuned": [
+            "16n",  # Exclude 16-node configs for 500m non-tuned
+            "8n",   # Exclude 8-node configs for 500m non-tuned
+        ],
+        "tuned": [
+            "16n",  # Exclude 16-node configs for 500m tuned
+            "8n",   # Exclude 8-node configs for 500m tuned
+        ]
+    },
+    "1b": {
+        "non-tuned": [
+            "16n",  # Exclude 16-node configs for 1b non-tuned
+            "8n",   # Exclude 8-node configs for 1b non-tuned
+        ],
+        "tuned": [
+            "16n" # Exclude 16-node configs for 1b tuned
+        ]
+    },
+    "5b": {
+        "non-tuned": [
+            "2n",   # Exclude 2-node configs for 5b non-tuned
+            "4n",   # Exclude 4-node configs for 5b non-tuned
+        ],
+        "tuned": [
+            "2n",   # Exclude 2-node configs for 5b tuned
+            "4n",   # Exclude 4-node configs for 5b tuned
+        ]
+    }
 }
+
 
 class ChartType(Enum):
     """Enum to define different chart types and their behaviors"""
@@ -221,7 +239,7 @@ def load_clickhouse_data(data_type):
 
             # Apply dataset-size-specific filtering
             if dataset_size in CLICKHOUSE_DATASET_FILTERS:
-                if any(pattern in hardware_config_ch for pattern in CLICKHOUSE_DATASET_FILTERS[dataset_size]):
+                if any(pattern in hardware_config_ch for pattern in CLICKHOUSE_DATASET_FILTERS[dataset_size]["non-tuned"]):
                     print(f"Skipping ClickHouse file: {filename} due to dataset-size-specific exclusion in hardware config: {hardware_config_ch}")
                     continue
 
@@ -316,7 +334,7 @@ def load_clickhouse_tuned_data(data_type):
 
             # Apply dataset-size-specific filtering
             if dataset_size in CLICKHOUSE_DATASET_FILTERS:
-                if any(pattern in hardware_config_ch for pattern in CLICKHOUSE_DATASET_FILTERS[dataset_size]):
+                if any(pattern in hardware_config_ch for pattern in CLICKHOUSE_DATASET_FILTERS[dataset_size]["tuned"]):
                     print(f"Skipping ClickHouse Tuned file: {filename} due to dataset-size-specific exclusion in hardware config: {hardware_config_ch}")
                     continue
 
