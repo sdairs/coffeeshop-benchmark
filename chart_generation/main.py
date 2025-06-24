@@ -8,17 +8,18 @@ import numpy as np
 from enum import Enum
 
 
-# Assuming the script is in a 'charts' directory and data is in sibling directories
 BASE_DATA_PATH = os.path.join(os.path.dirname(__file__), '..')
 
 DATABASE_DIRS = {
     "clickhouse-cloud": os.path.join(BASE_DATA_PATH, "clickhouse-cloud"),
+    "clickhouse-cloud-tuned": os.path.join(BASE_DATA_PATH, "clickhouse-cloud-tuned"),
     "databricks": os.path.join(BASE_DATA_PATH, "databricks"),
     "snowflake": os.path.join(BASE_DATA_PATH, "snowflake"),
 }
 
 DATABASE_COLORS = {
     "clickhouse-cloud": ["#faff69", "#E2D25D", "#BBFF69", "#FFDC69", "#7CFF69"],
+    "clickhouse-cloud-tuned": ["#faff69", "#E2D25D", "#BBFF69", "#FFDC69", "#7CFF69"],
     "databricks": ["#FF3621", "#FF21DF", "#FF8521"],
     "snowflake": ["#00A1D9", "#00D9C9", "#005ED9", "#001AD9"],
     # Add more specific colors if needed for different tiers/hardware
@@ -26,6 +27,7 @@ DATABASE_COLORS = {
 
 DATABASE_LABELS = {
     "clickhouse-cloud": "ClickHouse Cloud",
+    "clickhouse-cloud-tuned": "ClickHouse Cloud (Tuned)",
     "databricks": "Databricks",
     "snowflake": "Snowflake",
 }
@@ -107,6 +109,37 @@ class ChartConfig:
             }
         }
         return configs.get(chart_type, configs[ChartType.QUERY_PERFORMANCE])
+
+
+class ChartGenerationConfig:
+    """Configuration for chart generation modes and filtering"""
+    
+    def __init__(self, include_tuned=True, output_subdir="", exclude_patterns=None):
+        self.include_tuned = include_tuned
+        self.output_subdir = output_subdir
+        self.exclude_patterns = exclude_patterns or []
+    
+    def should_include_record(self, record):
+        """Check if a record should be included based on filtering rules"""
+        # Check if we should exclude tuned results
+        if not self.include_tuned and record.get('database') == 'clickhouse-cloud-tuned':
+            return False
+        
+        # Check exclude patterns
+        for pattern in self.exclude_patterns:
+            if pattern in record.get('hardware_config', ''):
+                return False
+        
+        return True
+    
+    def get_output_path(self, base_filename):
+        """Get the output path for charts based on configuration"""
+        charts_dir = os.path.join(os.path.dirname(__file__), '..', 'charts')
+        if self.output_subdir:
+            charts_dir = os.path.join(charts_dir, self.output_subdir)
+            # Create subdirectory if it doesn't exist
+            os.makedirs(charts_dir, exist_ok=True)
+        return os.path.join(charts_dir, base_filename)
 
 
 # --- Data Loading Functions ---
@@ -241,14 +274,115 @@ def load_clickhouse_data(data_type):
                             else:
                                 print(f"Warning: CH '{ch_cost_key}' - Found more results ({len(cost_values)}) than defined query names ({len(QUERY_NAMES)}) for {filename}. Index {i} out of bounds. Skipping extra data.")
                     elif ch_cost_key in data: # It exists but is not a list
-                        print(f"Warning: CH '{ch_cost_key}' data in {filename} is not a list as expected. Type: {type(data[ch_cost_key])}. Skipping this cost data.")
+                        print(f"Warning: CH '{ch_cost_key}' data in {filename} is not a list as expected. Type: {type(data[ch_cost_key])}. Skipping '{ch_cost_key}' data.")
 
     return processed_data
 
-def generate_chart_and_table(df_filtered, title, output_filename_base, queries_to_plot, chart_type=ChartType.QUERY_PERFORMANCE, horizontal_bars=False):
+def load_clickhouse_tuned_data(data_type):
+    """Loads performance or cost data for ClickHouse Cloud Tuned."""
+    # data_type can be 'performance' or 'cost'
+    results_dir = os.path.join(DATABASE_DIRS["clickhouse-cloud-tuned"], "results")
+    print(f"Loading ClickHouse Tuned data from: {results_dir}")
+    if not os.path.exists(results_dir):
+        print(f"Warning: ClickHouse Tuned results directory not found - {results_dir}")
+        return []
+
+    processed_data = []
+    for filename in os.listdir(results_dir):
+        if filename.startswith("result_") and filename.endswith(".json"):
+            file_path = os.path.join(results_dir, filename)
+            # Extract scale and hardware from filename
+            # New pattern: result_v25_4_1_1b_2n_30c_120g_20250620_151900.json
+            # Old pattern: result_1b_2n_60c_240g_....json
+            parts = filename.replace("result_", "").replace(".json", "").split('_')
+            
+            # Check if this is the new pattern (starts with version like v25_4_1)
+            if parts[0].startswith('v'):
+                # New pattern: skip version parts (v25, 4, 1) and get dataset size
+                dataset_size = parts[3]  # 1b is at index 3 after v25, 4, 1
+                # Hardware config starts after dataset size, ends before timestamp (last 2 parts)
+                hardware_config_ch = "_".join(parts[4:-2])
+            else:
+                # Old pattern: dataset size is first, hardware config follows
+                dataset_size = parts[0]
+                hardware_config_ch = "_".join(parts[1:-2])
+            # Map to a more generic hardware label if needed, for now use raw
+            # For ClickHouse, hardware might be like '2n_60c_240g'
+
+            # Apply filtering configuration
+            if any(pattern in hardware_config_ch for pattern in CLICKHOUSE_EXCLUDE_PATTERNS):
+                print(f"Skipping ClickHouse Tuned file: {filename} due to excluded pattern in hardware config: {hardware_config_ch}")
+                continue
+
+            # Apply dataset-size-specific filtering
+            if dataset_size in CLICKHOUSE_DATASET_FILTERS:
+                if any(pattern in hardware_config_ch for pattern in CLICKHOUSE_DATASET_FILTERS[dataset_size]):
+                    print(f"Skipping ClickHouse Tuned file: {filename} due to dataset-size-specific exclusion in hardware config: {hardware_config_ch}")
+                    continue
+
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+            
+            if data_type == 'performance':
+                # User: "clickhouse cloud results to use are under the `fastest` key"
+                if 'fastest' in data and isinstance(data['fastest'], list):
+                    for i, value in enumerate(data['fastest']):
+                        if value is None: continue
+                        if i < len(QUERY_NAMES):
+                            query_name = QUERY_NAMES[i]
+                            record = {
+                                'database': 'clickhouse-cloud-tuned',
+                                'hardware_config': f"CH Tuned {hardware_config_ch}", # Prefix to distinguish
+                                'dataset_size': dataset_size,
+                                'query_name': query_name,
+                                'metric_type': 'performance',
+                                'value': float(value)
+                            }
+                            processed_data.append(record)
+                        else:
+                            print(f"Warning: CH Tuned 'fastest' - Found more results ({len(data['fastest'])}) than defined query names ({len(QUERY_NAMES)}) for {filename}. Index {i} out of bounds. Skipping extra data.")
+                elif 'fastest' in data: # It exists but is not a list
+                     print(f"Warning: CH Tuned 'fastest' data in {filename} is not a list as expected. Type: {type(data['fastest'])}. Skipping 'fastest' data.")
+
+            elif data_type == 'cost':
+                # User: "tier_scale_cost_per_query` and `tier_enterprise_cost_per_query`"
+                cost_keys = {
+                    'tier_scale_cost_per_query': 'cost_scale',
+                    'tier_enterprise_cost_per_query': 'cost_enterprise'
+                }
+                for ch_cost_key, metric_label in cost_keys.items():
+                    if ch_cost_key in data and isinstance(data[ch_cost_key], list):
+                        cost_values = data[ch_cost_key]
+                        for i, value in enumerate(cost_values):
+                            if value is None: continue
+                            if i < len(QUERY_NAMES):
+                                query_name = QUERY_NAMES[i]
+                                record = {
+                                    'database': 'clickhouse-cloud-tuned',
+                                    'hardware_config': f"CH Tuned {hardware_config_ch} ({metric_label.split('_')[1]})",
+                                    'dataset_size': dataset_size,
+                                    'query_name': query_name,
+                                    'metric_type': 'cost',
+                                    'value': float(value)
+                                }
+                                processed_data.append(record)
+                            else:
+                                print(f"Warning: CH Tuned '{ch_cost_key}' - Found more results ({len(cost_values)}) than defined query names ({len(QUERY_NAMES)}) for {filename}. Index {i} out of bounds. Skipping extra data.")
+                    elif ch_cost_key in data: # It exists but is not a list
+                        print(f"Warning: CH Tuned '{ch_cost_key}' data in {filename} is not a list as expected. Type: {type(data[ch_cost_key])}. Skipping '{ch_cost_key}' data.")
+
+    print(f"Loaded {len(processed_data)} ClickHouse Tuned {data_type} records")
+    return processed_data
+
+def generate_chart_and_table(df_filtered, title, output_filename_base, queries_to_plot, chart_type=ChartType.QUERY_PERFORMANCE, horizontal_bars=False, config=None):
     """Generates and saves a bar chart with a data table below it."""
+    if config is None:
+        config = ChartGenerationConfig()
+    
     print(f"\n--- Generating chart: {title} ---")
     print(f"Chart type: {chart_type.value}")
+    print(f"Output mode: {'with tuned' if config.include_tuned else 'without tuned'}")
+    print(f"Output subdir: {config.output_subdir or 'root'}")
     print(f"Input df_filtered ({len(df_filtered)} records) head for '{title}':")
     if not df_filtered.empty:
         print(df_filtered.head().to_string())
@@ -263,7 +397,7 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
     print("--- End of input data for chart --- \n")
 
     # Get chart configuration
-    config = ChartConfig.get_config(chart_type)
+    chart_config = ChartConfig.get_config(chart_type)
 
     # Original print for the function start
     # print(f"\nGenerating chart: {title}") # This can be removed or kept as is
@@ -281,7 +415,7 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
     pivot_df = pivot_df[queries_to_plot] # Ensure correct query order and selection
 
     # For 'Total' charts, sort by value (best to worst, so ascending for data but descending for display)
-    if config['is_total_chart'] and not pivot_df.empty and len(pivot_df.columns) == 1:
+    if chart_config['is_total_chart'] and not pivot_df.empty and len(pivot_df.columns) == 1:
         # Sort by the single column of values, descending so best (lowest) values appear at top of horizontal bars
         pivot_df = pivot_df.sort_values(by=pivot_df.columns[0], ascending=False)
     
@@ -299,7 +433,7 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
     fig.patch.set_facecolor('#1C1C1A') # Set figure background
 
     # Use different layouts for total vs non-total charts
-    if config['is_total_chart']:
+    if chart_config['is_total_chart']:
         # Single subplot for total charts (no table)
         ax_chart = fig.add_subplot(1, 1, 1)
     else:
@@ -316,7 +450,7 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
     ax_chart.spines['left'].set_visible(False)
 
     # Remove vertical axis ticks for total charts only
-    if config['is_total_chart']:
+    if chart_config['is_total_chart']:
         ax_chart.set_yticks([])
         # Add vertical grid lines for total charts
         ax_chart.grid(True, axis='x', linestyle='--', color='white', alpha=0.3)
@@ -379,7 +513,7 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
             bars = ax_chart.bar(positions, values, bar_width, label=config_name, color=color)
 
         # Add value labels on bars for total charts
-        if config['is_total_chart']:
+        if chart_config['is_total_chart']:
             for j, (bar, value) in enumerate(zip(bars, values)):
                 if pd.notna(value):
                     if horizontal_bars:
@@ -393,7 +527,7 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
                                     ha='right', va='center', fontsize=10, color='white', weight='bold')
                         
                         # Show secondary values if available and configured
-                        if config['show_secondary_values'] and 'total_cost_value' in df_filtered.columns and chart_type == ChartType.TOTAL_PERFORMANCE:
+                        if chart_config['show_secondary_values'] and 'total_cost_value' in df_filtered.columns and chart_type == ChartType.TOTAL_PERFORMANCE:
                             # Show cost value for performance charts
                             cost_row = df_filtered[df_filtered['hardware_config'] == config_name]
                             if not cost_row.empty and 'total_cost_value' in cost_row.columns:
@@ -407,7 +541,7 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
                             else:
                                 ax_chart.text(x_pos, y_pos, f'{value:.3f}s', 
                                             ha='left', va='center', fontsize=9, color='white', weight='bold')
-                        elif config['show_secondary_values'] and 'total_perf_value' in df_filtered.columns and chart_type == ChartType.TOTAL_COST:
+                        elif chart_config['show_secondary_values'] and 'total_perf_value' in df_filtered.columns and chart_type == ChartType.TOTAL_COST:
                             # Show performance value for cost charts
                             perf_row = df_filtered[df_filtered['hardware_config'] == config_name]
                             if not perf_row.empty and 'total_perf_value' in perf_row.columns:
@@ -423,7 +557,7 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
                                             ha='left', va='center', fontsize=9, color='white', weight='bold')
                         else:
                             # Standard value display
-                            if config['currency_format']:
+                            if chart_config['currency_format']:
                                 ax_chart.text(x_pos, y_pos, f'${value:.3f}', 
                                             ha='left', va='center', fontsize=9, color='white', weight='bold')
                             else:
@@ -434,7 +568,7 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
                         x_pos = bar.get_x() + bar.get_width() / 2
                         y_pos = bar.get_height() + max(values) * 0.01
                         
-                        if config['currency_format']:
+                        if chart_config['currency_format']:
                             ax_chart.text(x_pos, y_pos, f'${value:.3f}', 
                                         ha='center', va='bottom', fontsize=9, color='white', weight='bold')
                         else:
@@ -446,7 +580,7 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
         # Remove y-tick labels since we removed y-ticks entirely
         
         # Adjust x-axis limits for total charts to make room for labels on the left
-        if config['is_total_chart']:
+        if chart_config['is_total_chart']:
             current_xlim = ax_chart.get_xlim()
             max_bar_value = pivot_df.values.max() if not pivot_df.empty else 1
             # Extend left side for labels and right side for value labels
@@ -463,7 +597,7 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
         ax_chart.set_xticks(indices + bar_width * (num_configs - 1) / 2)
         
         # Transform query labels for per-query charts (not total charts)
-        if not config['is_total_chart']:
+        if not chart_config['is_total_chart']:
             # Transform Query_02 format to Q2 format for per-query charts
             simplified_labels = []
             for label in queries_to_plot:
@@ -485,7 +619,7 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
     ax_chart.margins(y=0.01)
 
     # Data table - only for non-total charts
-    if not config['is_total_chart']:
+    if not chart_config['is_total_chart']:
         ax_table = fig.add_subplot(gs[1])
         ax_table.axis('off')
 
@@ -494,7 +628,7 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
             """Format numbers based on chart type"""
             if pd.isna(value):
                 return 'N/A'
-            if config['currency_format']:
+            if chart_config['currency_format']:
                 return f'${value:.3f}'
             else:
                 return f'{value:.3f}'
@@ -561,8 +695,8 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
                          color='white', fontsize=12)
 
     # Save the chart
-    # output_path = f"{output_filename_base}.png"
-    output_path = os.path.join(BASE_DATA_PATH, 'charts', f"{output_filename_base}.png")
+    output_filename = f"{output_filename_base}.png"
+    output_path = config.get_output_path(output_filename)
     plt.subplots_adjust(hspace=0.2)  # Adjust spacing instead of tight_layout
     plt.savefig(output_path, facecolor='#1C1C1A', dpi=300, bbox_inches='tight')
     plt.close()
@@ -571,7 +705,8 @@ def generate_chart_and_table(df_filtered, title, output_filename_base, queries_t
 
 # --- Main Orchestration --- 
 
-def main():
+def generate_charts_with_config(config):
+    """Generate all charts with the specified configuration"""
     all_perf_data = []
     all_cost_data = []
 
@@ -583,6 +718,14 @@ def main():
     # Load ClickHouse data
     all_perf_data.extend(load_clickhouse_data('performance'))
     all_cost_data.extend(load_clickhouse_data('cost'))
+    
+    # Load ClickHouse Tuned data (will be filtered later based on config)
+    all_perf_data.extend(load_clickhouse_tuned_data('performance'))
+    all_cost_data.extend(load_clickhouse_tuned_data('cost'))
+    
+    # Apply configuration-based filtering
+    all_perf_data = [record for record in all_perf_data if config.should_include_record(record)]
+    all_cost_data = [record for record in all_cost_data if config.should_include_record(record)]
 
     if not all_perf_data and not all_cost_data:
         print("No data loaded. Exiting.")
@@ -602,12 +745,14 @@ def main():
         # Condition: database is not 'clickhouse-cloud' OR (it is 'clickhouse-cloud' AND 'hardware_config' contains '(scale)')
         is_not_ch_enterprise_cost = ~(df_cost['database'].str.contains('clickhouse-cloud', case=False, na=False) & 
                                       df_cost['hardware_config'].str.contains('enterprise', case=False, na=False))
+
         df_cost = df_cost[is_not_ch_enterprise_cost].copy() # Use .copy() to avoid SettingWithCopyWarning later
 
         # Simplify ClickHouse hardware_config names for cost charts (remove '(scale)')
         # This will affect legend and table row labels for cost charts.
         def simplify_ch_cost_label(config_name):
-            if 'clickhouse-cloud' in df_cost[df_cost['hardware_config'] == config_name]['database'].iloc[0] and \
+            if ('clickhouse-cloud' in df_cost[df_cost['hardware_config'] == config_name]['database'].iloc[0] or 
+                'clickhouse-cloud-tuned' in df_cost[df_cost['hardware_config'] == config_name]['database'].iloc[0]) and \
                '(scale)' in config_name:
                 return config_name.replace(' (scale)', '')
             return config_name
@@ -624,6 +769,7 @@ def main():
         print(f"  Sample for Snowflake:\n{df_perf[df_perf['database'] == 'snowflake'].head().to_string()}")
         print(f"  Sample for Databricks:\n{df_perf[df_perf['database'] == 'databricks'].head().to_string()}")
         print(f"  Sample for ClickHouse:\n{df_perf[df_perf['database'] == 'clickhouse-cloud'].head().to_string()}")
+        print(f"  Sample for ClickHouse Tuned:\n{df_perf[df_perf['database'] == 'clickhouse-cloud-tuned'].head().to_string()}")
     else:
         print("Performance Data: Empty")
     
@@ -635,6 +781,7 @@ def main():
         print(f"  Sample for Snowflake:\n{df_cost[df_cost['database'] == 'snowflake'].head().to_string()}")
         print(f"  Sample for Databricks:\n{df_cost[df_cost['database'] == 'databricks'].head().to_string()}")
         print(f"  Sample for ClickHouse:\n{df_cost[df_cost['database'] == 'clickhouse-cloud'].head().to_string()}")
+        print(f"  Sample for ClickHouse Tuned:\n{df_cost[df_cost['database'] == 'clickhouse-cloud-tuned'].head().to_string()}")
     else:
         print("Cost Data: Empty")
     print("--- End Initial Data Load Summary ---\n")
@@ -656,7 +803,8 @@ def main():
                                  title=f"Seconds By Query (Except 10 & 16) - {ds_size} Orders - {DATASET_ROWS[ds_size]} Rows", 
                                  output_filename_base=f"perf_excl_q10_q16_{ds_size}",
                                  queries_to_plot=queries_group1_2,
-                                 chart_type=ChartType.QUERY_PERFORMANCE)
+                                 chart_type=ChartType.QUERY_PERFORMANCE,
+                                 config=config)
 
     # 2. Query cost (except Q10, Q16)
     for ds_size in dataset_sizes:
@@ -670,7 +818,8 @@ def main():
                                  title=f"$ By Query (Except 10 & 16) - {ds_size} Orders - {DATASET_ROWS[ds_size]} Rows", 
                                  output_filename_base=f"cost_excl_q10_q16_{ds_size}",
                                  queries_to_plot=queries_group1_2,
-                                 chart_type=ChartType.QUERY_COST)
+                                 chart_type=ChartType.QUERY_COST,
+                                 config=config)
 
     # 3. Query performance & cost for Q10, Q16
     for ds_size in dataset_sizes:
@@ -683,7 +832,8 @@ def main():
                                      title=f"Seconds By Query (Queries 10 & 16) - {ds_size} Orders - {DATASET_ROWS[ds_size]} Rows", 
                                      output_filename_base=f"perf_q10_q16_{ds_size}",
                                      queries_to_plot=queries_group3,
-                                     chart_type=ChartType.QUERY_PERFORMANCE)
+                                     chart_type=ChartType.QUERY_PERFORMANCE,
+                                     config=config)
         # Cost for Q10, Q16
         df_filtered_cost = df_cost[df_cost['dataset_size'] == ds_size]
         if not queries_group3 or df_filtered_cost.empty:
@@ -693,7 +843,8 @@ def main():
                                      title=f"$ By Query (Queries 10 & 16) - {ds_size} Orders - {DATASET_ROWS[ds_size]} Rows", 
                                      output_filename_base=f"cost_q10_q16_{ds_size}",
                                      queries_to_plot=queries_group3,
-                                     chart_type=ChartType.QUERY_COST)
+                                     chart_type=ChartType.QUERY_COST,
+                                     config=config)
 
     # 4. Total performance (sum of all queries)
     df_total_perf_data_for_labels = None # Initialize to store perf data for labels
@@ -731,7 +882,8 @@ def main():
                                      output_filename_base=f"total_perf_{ds_size}",
                                      queries_to_plot=['Total_Performance'],
                                      chart_type=ChartType.TOTAL_PERFORMANCE,
-                                     horizontal_bars=True)
+                                     horizontal_bars=True,
+                                     config=config)
     else:
         print("Skipping total performance charts due to no performance data or no queries identified.")
 
@@ -771,9 +923,34 @@ def main():
                                      output_filename_base=f"total_cost_{ds_size}",
                                      queries_to_plot=['Total_Cost'],
                                      chart_type=ChartType.TOTAL_COST,
-                                     horizontal_bars=True)
+                                     horizontal_bars=True,
+                                     config=config)
     else:
         print("Skipping total cost charts due to no cost data or no queries identified.")
+
+def main():
+    # Define chart generation configurations
+    configs = [
+        ChartGenerationConfig(
+            include_tuned=False, 
+            output_subdir="", 
+            exclude_patterns=[]
+        ),
+        ChartGenerationConfig(
+            include_tuned=True, 
+            output_subdir="tuned", 
+            exclude_patterns=["Gen1"]
+        )
+    ]
+    
+    for config in configs:
+        print(f"\n{'='*60}")
+        print(f"GENERATING CHARTS - Mode: {'WITH' if config.include_tuned else 'WITHOUT'} tuned results")
+        print(f"Output directory: charts/{config.output_subdir if config.output_subdir else 'root'}")
+        print(f"Exclude patterns: {config.exclude_patterns}")
+        print(f"{'='*60}")
+        
+        generate_charts_with_config(config)
 
 if __name__ == "__main__":
     main()
