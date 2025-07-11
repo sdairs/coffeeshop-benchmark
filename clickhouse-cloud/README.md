@@ -70,7 +70,7 @@ Once your service is ready and the environment variables are set, run the benchm
 |--------------------|-------------|--------------------------------------------------|
 | `version`          | `25.4.1`    | ClickHouse version to log for the run           |
 | `scale`            | `500m`      | Dataset scale: 500m, 1b, 5b                      |
-| `load_data?`       | `true`      | Whether to ingest the dataset                   |
+| `skip_load?`       | `true`      | Whether to skip ingesting the dataset                   |
 | `repeats`          | `5`         | Number of times to run each query               |
 | `nodes`            | `2`         | Number of compute nodes in the service          |
 | `vcpus`            | `30`        | vCPUs per node                                  |
